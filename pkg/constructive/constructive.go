@@ -215,9 +215,27 @@ func FromBigInt(i *big.Int) Real {
 	return newInteger(i)
 }
 
+// FromBigIntSlice creates a slice of Real numbers from a slice of big.Int.
+func FromBigIntSlice(ints []*big.Int) []Real {
+	reals := make([]Real, len(ints))
+	for idx, val := range ints {
+		reals[idx] = FromBigInt(val)
+	}
+	return reals
+}
+
 // FromInt64 creates a Real number from an int64.
 func FromInt64(i int64) Real {
 	return newInteger(big.NewInt(i))
+}
+
+// FromInt64Slice creates a slice of Real numbers from a slice of int64.
+func FromInt64Slice(ints []int64) []Real {
+	reals := make([]Real, len(ints))
+	for idx, val := range ints {
+		reals[idx] = FromInt64(val)
+	}
+	return reals
 }
 
 // FromInt creates a Real number from an int.
@@ -225,9 +243,27 @@ func FromInt(i int) Real {
 	return FromInt64(int64(i))
 }
 
+// FromIntSlice creates a slice of Real numbers from a slice of int.
+func FromIntSlice(ints []int) []Real {
+	reals := make([]Real, len(ints))
+	for idx, val := range ints {
+		reals[idx] = FromInt(val)
+	}
+	return reals
+}
+
 // FromFloat32 creates a Real number from a float32.
 func FromFloat32(f float32) Real {
 	return FromFloat64(float64(f))
+}
+
+// FromFloat32Slice creates a slice of Real numbers from a slice of float32.
+func FromFloat32Slice(floats []float32) []Real {
+	reals := make([]Real, len(floats))
+	for idx, val := range floats {
+		reals[idx] = FromFloat32(val)
+	}
+	return reals
 }
 
 // FromFloat64 creates a Real number from a float64.
@@ -251,6 +287,15 @@ func FromFloat64(f float64) Real {
 		r = newNegation(r)
 	}
 	return r
+}
+
+// FromFloat64Slice creates a slice of Real numbers from a slice of float64.
+func FromFloat64Slice(floats []float64) []Real {
+	reals := make([]Real, len(floats))
+	for idx, val := range floats {
+		reals[idx] = FromFloat64(val)
+	}
+	return reals
 }
 
 // FromRat creates a Real number from a rational number a/b, where b != 0.
@@ -801,6 +846,21 @@ func ContinuedFraction64(fracs []int64) Real {
 	c := FromInt64(fracs[len(fracs)-1])
 	for i := len(fracs) - 2; i >= 0; i-- {
 		c = Add(FromInt64(fracs[i]), Inverse(c))
+	}
+
+	return c
+}
+
+// ContinuedFraction computes the continued fraction from the given
+// slice of constructive Real values.
+func ContinuedFraction(fracs []Real) Real {
+	if len(fracs) == 0 {
+		return Zero()
+	}
+
+	c := fracs[len(fracs)-1]
+	for i := len(fracs) - 2; i >= 0; i-- {
+		c = Add(fracs[i], Inverse(c))
 	}
 
 	return c

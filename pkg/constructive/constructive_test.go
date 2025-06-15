@@ -169,6 +169,11 @@ func TestPreciseCmp(t *testing.T) {
 
 	// 47/17 = [2; 1, 3, 4]
 	assertEqualAtPrecision(t, Divide(FromInt(47), FromInt(17)), ContinuedFraction64([]int64{2, 1, 3, 4}), -100)
+	assertEqualAtPrecision(t, Divide(FromInt(47), FromInt(17)), ContinuedFraction(FromInt64Slice([]int64{2, 1, 3, 4})), -200)
+	assertEqualAtPrecision(t, Divide(FromInt(47), FromInt(17)), ContinuedFraction(FromIntSlice([]int{2, 1, 3, 4})), -200)
+	assertEqualAtPrecision(t, Divide(FromInt(47), FromInt(17)), ContinuedFraction(FromFloat32Slice([]float32{2, 1, 3, 4})), -200)
+	assertEqualAtPrecision(t, Divide(FromInt(47), FromInt(17)), ContinuedFraction(FromFloat64Slice([]float64{2, 1, 3, 4})), -200)
+
 	// 81047/107501 = [0; 1, 3, 15, 1, 2, 3, 33, 2, 2]
 	assertEqualAtPrecision(t, Divide(FromInt(81047), FromInt(107501)), ContinuedFraction64([]int64{0, 1, 3, 15, 1, 2, 3, 33, 2, 2}), -100)
 }
