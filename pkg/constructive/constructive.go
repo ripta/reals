@@ -78,6 +78,12 @@ func Approximate(c Real, p int) *big.Int {
 	return t.Set(p, s)
 }
 
+// AsConstruction returns a string representing the construction of the Real number c,
+// which may provide insight into how the number is constructed.
+func AsConstruction(c Real) string {
+	return c.asConstruction()
+}
+
 // Cmp compares two Real numbers a and b with higher and higher
 // precision until a non-zero result is found. It returns 1 if `a > b`,
 // -1 if `a < b`.
@@ -119,6 +125,7 @@ func PreciseCmp(a, b Real, p int) int {
 // Real represents a constructive real number.
 type Real interface {
 	approximate(int) *big.Int
+	asConstruction() string
 	tracker() *precisionTracker
 }
 
@@ -313,9 +320,9 @@ func (c *constructiveInteger) approximate(p int) *big.Int {
 	return scale(c.i, -p)
 }
 
-//func (c *constructiveInteger) String() string {
-//	return fmt.Sprintf("reals.constructiveInteger{i: %s, %s}", c.i.String(), c.precisionTracker.String())
-//}
+func (c *constructiveInteger) asConstruction() string {
+	return fmt.Sprintf("Int(%s)", c.i.Text(10))
+}
 
 // Add computes the addition `a + b`.
 func Add(a, b Real) Real {
@@ -343,6 +350,10 @@ func newAddition(a, b Real) Real {
 func (c *constructiveAddition) approximate(p int) *big.Int {
 	sum := bigAdd(Approximate(c.a, p-2), Approximate(c.b, p-2))
 	return scale(sum, -2)
+}
+
+func (c *constructiveAddition) asConstruction() string {
+	return fmt.Sprintf("Add(%s, %s)", c.a.asConstruction(), c.b.asConstruction())
 }
 
 type constructiveMultiplication struct {
@@ -393,9 +404,9 @@ func (c *constructiveMultiplication) approximate(p int) *big.Int {
 	return scale(bigMul(ia, ib), p1+p2-p)
 }
 
-//func (c *constructiveMultiplication) String() string {
-//	return fmt.Sprintf("reals.constructiveMultiplication{a: %s, b: %s, %s}", c.a, c.b, c.precisionTracker.String())
-//}
+func (c *constructiveMultiplication) asConstruction() string {
+	return fmt.Sprintf("Multiply(%s, %s)", c.a.asConstruction(), c.b.asConstruction())
+}
 
 // Inverse computes the multiplicative inverse, which is 1/c.
 func Inverse(c Real) Real {
@@ -443,6 +454,10 @@ func (c *constructiveMultiplicativeInverse) approximate(p int) *big.Int {
 	return res
 }
 
+func (c *constructiveMultiplicativeInverse) asConstruction() string {
+	return fmt.Sprintf("Inverse(%s)", c.r.asConstruction())
+}
+
 type constructiveShift struct {
 	precisionTracker
 	r Real
@@ -470,6 +485,20 @@ func (c *constructiveShift) approximate(p int) *big.Int {
 	return Approximate(c.r, p-c.n)
 }
 
+func (c *constructiveShift) asConstruction() string {
+	dir := "Left"
+	if c.n < 0 {
+		dir = "Right"
+	}
+
+	amt := c.n
+	if amt < 0 {
+		amt = -amt
+	}
+
+	return fmt.Sprintf("Shift%s(%s, %d)", dir, c.r.asConstruction(), amt)
+}
+
 // Negate computes the negation `-c`. The approximation is actually `-Approximate(c, p)`.
 func Negate(c Real) Real {
 	return newNegation(c)
@@ -488,6 +517,10 @@ func newNegation(r Real) Real {
 
 func (c *constructiveNegation) approximate(p int) *big.Int {
 	return bigNeg(Approximate(c.r, p))
+}
+
+func (c *constructiveNegation) asConstruction() string {
+	return fmt.Sprintf("Negate(%s)", c.r.asConstruction())
 }
 
 // Abs computes the absolute value of c.
@@ -543,6 +576,10 @@ func (c *constructiveCondsign) approximate(p int) *big.Int {
 	return scale(ib, -1)
 }
 
+func (c *constructiveCondsign) asConstruction() string {
+	return fmt.Sprintf("CondSign(%s, %s, %s)", c.r.asConstruction(), c.a.asConstruction(), c.b.asConstruction())
+}
+
 // Exp computes the e^c.
 func Exp(c Real) Real {
 	rough := Approximate(c, -3)
@@ -592,6 +629,10 @@ func (c *prescaledExponential) approximate(p int) *big.Int {
 		sum = bigAdd(sum, term)
 	}
 	return scale(sum, calcPrec-p)
+}
+
+func (c *prescaledExponential) asConstruction() string {
+	return fmt.Sprintf("Pow(E, %s)", c.r.asConstruction())
 }
 
 func Ln(c Real) Real {
@@ -650,6 +691,10 @@ func (c *prescaledNaturalLog) approximate(p int) *big.Int {
 	return scale(sum, calcPrec-p)
 }
 
+func (c *prescaledNaturalLog) asConstruction() string {
+	return fmt.Sprintf("Ln(%s)", c.r.asConstruction())
+}
+
 type integralArctan struct {
 	precisionTracker
 	a Real
@@ -688,6 +733,10 @@ func (c *integralArctan) approximate(p int) *big.Int {
 		sum = bigAdd(sum, term)
 	}
 	return scale(sum, calcPrec-p)
+}
+
+func (c *integralArctan) asConstruction() string {
+	return fmt.Sprintf("IntegralArctan(%s)", c.a.asConstruction())
 }
 
 // Sqrt computes the square root of c.
@@ -731,6 +780,10 @@ func (c *prescaledSqrt) approximate(p int) *big.Int {
 
 	fp, _ := ir.Float64()
 	return signedShift(big.NewInt(int64(math.Sqrt(fp))), (pa-60)/2-p)
+}
+
+func (c *prescaledSqrt) asConstruction() string {
+	return fmt.Sprintf("Sqrt(%s)", c.r.asConstruction())
 }
 
 // Cosine computes the cosine of c.
@@ -807,6 +860,10 @@ func (c *prescaledCosine) approximate(p int) *big.Int {
 	return scale(sum, calcPrec-p)
 }
 
+func (c *prescaledCosine) asConstruction() string {
+	return fmt.Sprintf("Cosine(%s)", c.r.asConstruction())
+}
+
 // Pow computes the power c^n.
 func Pow(c, n Real) Real {
 	return Exp(Multiply(Ln(c), n))
@@ -829,7 +886,13 @@ func newNamed(name string, c Real) Real {
 	}
 }
 
-func constructiveName(c Real) (string, bool) {
+func (c *named) asConstruction() string {
+	return fmt.Sprintf("Named(%q, %s)", c.Name, c.Real.asConstruction())
+}
+
+// ConstructiveName returns the name of the constructive Real number c,
+// if it has one. The second return value indicates whether a name was found.
+func ConstructiveName(c Real) (string, bool) {
 	if n, ok := c.(*named); ok {
 		return n.Name, true
 	}
