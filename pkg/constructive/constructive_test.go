@@ -195,6 +195,9 @@ func TestText(t *testing.T) {
 	assert.Equal(t, "0.33333", Text(Inverse(FromFloat32(3)), 5, 10))
 
 	assert.Equal(t, "3.00000", Text(Divide(FromInt(6), FromInt(2)), 5, 10))
+	assert.Equal(t, "0.000244140625000", Text(Divide(FromInt(1), FromInt(4096)), 15, 10))
+	assert.Equal(t, "1.000244140625000", Text(Add(FromInt(1), Divide(FromInt(1), FromInt(4096))), 15, 10))
+	assert.Equal(t, "2.000244140625000", Text(Add(FromInt(2), Divide(FromInt(1), FromInt(4096))), 15, 10))
 
 	assert.Equal(t, "0.30000000447034835815", Text(Add(FromFloat32(0.1), FromFloat32(0.2)), 20, 10))
 	assert.Equal(t, "0.30000000000000001665", Text(Add(FromFloat64(0.1), FromFloat64(0.2)), 20, 10))
