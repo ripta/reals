@@ -65,6 +65,37 @@ func (r *Number) Divide(other *Number) *Number {
 	}
 }
 
+// ShiftLeft shifts the rational number left by n bits (multiplies by 2^n).
+// Supports signed shifts: negative n shifts right.
+func (r *Number) ShiftLeft(n int) *Number {
+	return r.shift(n)
+}
+
+// ShiftRight shifts the rational number right by n bits (divides by 2^n).
+// Supports signed shifts: negative n shifts left.
+func (r *Number) ShiftRight(n int) *Number {
+	return r.shift(-n)
+}
+
+// shift shifts the rational number by n bits. Positive n shifts left, negative n shifts right.
+func (r *Number) shift(n int) *Number {
+	if n == 0 {
+		return r
+	}
+
+	num := new(big.Int).Set(r.r.Num())
+	denom := new(big.Int).Set(r.r.Denom())
+	if n > 0 {
+		num.Lsh(num, uint(n))
+	} else {
+		denom.Lsh(denom, uint(-n))
+	}
+
+	return &Number{
+		r: new(big.Rat).SetFrac(num, denom),
+	}
+}
+
 // Negate negates the rational number.
 func (r *Number) Negate() *Number {
 	return &Number{

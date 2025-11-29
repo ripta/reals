@@ -46,3 +46,42 @@ func assertEqualAtPrecision(t *testing.T, a, b constructive.Real, precision int)
 		t.Errorf("expected [1] to be equal to [2] at precision %d\n[1]: %s\n     %#v\n[2]: %s\n     %#v", precision, constructive.Text(a, -precision, 10), a, constructive.Text(b, -precision, 10), b)
 	}
 }
+
+func TestShift(t *testing.T) {
+	// Shifting left positive
+	assertRationalEqual(t, New64(12, 4), New64(3, 4).ShiftLeft(2)) // 3/4 * 4 = 12/4
+	assertRationalEqual(t, New64(6, 4), New64(3, 4).ShiftLeft(1))  // 3/4 * 2 = 6/4
+	assertRationalEqual(t, New64(24, 4), New64(3, 4).ShiftLeft(3)) // 3/4 * 8 = 24/4 = 6
+	assertRationalEqual(t, New64(6, 1), New64(3, 4).ShiftLeft(3))  // 3/4 * 8 = 24/4 = 6
+
+	// Shifting left negative
+	assertRationalEqual(t, New64(3, 16), New64(3, 4).ShiftLeft(-2))
+	assertRationalEqual(t, New64(3, 8), New64(3, 4).ShiftLeft(-1))
+
+	// Shifting right positive
+	assertRationalEqual(t, New64(3, 16), New64(3, 4).ShiftRight(2)) // 3/4 / 4 = 3/16
+	assertRationalEqual(t, New64(3, 8), New64(3, 4).ShiftRight(1))  // 3/4 / 2 = 3/8
+	assertRationalEqual(t, New64(3, 32), New64(3, 4).ShiftRight(3)) // 3/4 / 8 = 3/32
+
+	// Shifting right negative
+	assertRationalEqual(t, New64(12, 4), New64(3, 4).ShiftRight(-2))
+	assertRationalEqual(t, New64(6, 4), New64(3, 4).ShiftRight(-1))
+
+	// Shifting by zero
+	assertRationalEqual(t, New64(3, 4), New64(3, 4).ShiftLeft(0))
+	assertRationalEqual(t, New64(3, 4), New64(3, 4).ShiftRight(0))
+
+	// Shifting zero
+	assertRationalEqual(t, Zero(), Zero().ShiftLeft(5))
+	assertRationalEqual(t, Zero(), Zero().ShiftRight(5))
+	assertRationalEqual(t, Zero(), Zero().ShiftLeft(-5))
+	assertRationalEqual(t, Zero(), Zero().ShiftRight(-5))
+
+	// Shifting one
+	assertRationalEqual(t, New64(8, 1), One().ShiftLeft(3))  // 1 * 8 = 8
+	assertRationalEqual(t, New64(1, 8), One().ShiftRight(3)) // 1 / 8 = 1/8
+
+	// Large shifts
+	assertRationalEqual(t, New64(3072, 4), New64(3, 4).ShiftLeft(10))  // 3/4 * 1024 = 3072/4
+	assertRationalEqual(t, New64(3, 4096), New64(3, 4).ShiftRight(10)) // 3/4 / 1024 = 3/4096
+}
