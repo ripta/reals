@@ -49,7 +49,7 @@ func (u *Real) Add(other *Real) *Real {
 	if u.IsZero() {
 		return other
 	}
-	return New(constructive.Add(u.cr, other.cr), u.rr.Add(other.rr))
+	return New(constructive.Add(u.Constructive(), other.Constructive()), rational.One())
 }
 
 // Subtract `other` from the current number, returning a new Real number.

@@ -164,7 +164,7 @@ var addTests = []addTest{
 		name:     "transcendentals: E + Pi",
 		a:        E(),
 		b:        Pi(),
-		expected: New(constructive.Add(constructive.E(), constructive.Pi()), rational.New64(2, 1)),
+		expected: New(constructive.Add(constructive.E(), constructive.Pi()), rational.New64(1, 1)),
 	},
 }
 
