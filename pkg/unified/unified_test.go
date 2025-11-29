@@ -398,6 +398,104 @@ func TestDivide(t *testing.T) {
 	}
 }
 
+type shiftLeftTest struct {
+	name     string
+	input    *Real
+	shift    int
+	expected *Real
+}
+
+var shiftLeftTests = []shiftLeftTest{
+	{
+		name:     "shift left by 1: Half << 1 = One",
+		input:    Half(),
+		shift:    1,
+		expected: One(),
+	},
+	{
+		name:     "shift left by 2: Half << 2 = Two",
+		input:    Half(),
+		shift:    2,
+		expected: Two(),
+	},
+	{
+		name:     "shift left by 0: Half << 0 = Half",
+		input:    Half(),
+		shift:    0,
+		expected: Half(),
+	},
+	{
+		name:     "shift left by -1: Two << -1 = One",
+		input:    Two(),
+		shift:    -1,
+		expected: One(),
+	},
+	{
+		name:     "shift 32 by 5: 32 << 5 = 1024",
+		input:    New(constructive.One(), rational.New64(32, 1)),
+		shift:    5,
+		expected: New(constructive.One(), rational.New64(1024, 1)),
+	},
+}
+
+func TestShiftLeft(t *testing.T) {
+	for _, test := range shiftLeftTests {
+		t.Run(test.name, func(t *testing.T) {
+			result := test.input.ShiftLeft(test.shift)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}
+
+type shiftRightTest struct {
+	name     string
+	input    *Real
+	shift    int
+	expected *Real
+}
+
+var shiftRightTests = []shiftRightTest{
+	{
+		name:     "shift right by 1: Two >> 1 = One",
+		input:    Two(),
+		shift:    1,
+		expected: One(),
+	},
+	{
+		name:     "shift right by 2: Two >> 2 = Half",
+		input:    Two(),
+		shift:    2,
+		expected: Half(),
+	},
+	{
+		name:     "shift right by 0: Two >> 0 = Two",
+		input:    Two(),
+		shift:    0,
+		expected: Two(),
+	},
+	{
+		name:     "shift right by -1: Half >> -1 = One",
+		input:    Half(),
+		shift:    -1,
+		expected: One(),
+	},
+	{
+		name:     "shift 1024 by 5: 1024 >> 5 = 32",
+		input:    New(constructive.One(), rational.New64(1024, 1)),
+		shift:    5,
+		expected: New(constructive.One(), rational.New64(32, 1)),
+	},
+}
+
+func TestShiftRight(t *testing.T) {
+	for _, test := range shiftRightTests {
+		t.Run(test.name, func(t *testing.T) {
+			result := test.input.ShiftRight(test.shift)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}
+
 type negateTest struct {
 	name     string
 	input    *Real

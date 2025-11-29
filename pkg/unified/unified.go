@@ -78,6 +78,18 @@ func (u *Real) Divide(other *Real) *Real {
 	return u.Multiply(other.Inverse())
 }
 
+// ShiftLeft shifts the number to the left by the specified number of bits,
+// which is equivalent to multiplying the number by 2^n.
+func (u *Real) ShiftLeft(n int) *Real {
+	return New(u.cr, u.rr.ShiftLeft(n))
+}
+
+// ShiftRight shifts the number to the right by the specified number of bits,
+// which is equivalent to dividing the number by 2^n.
+func (u *Real) ShiftRight(n int) *Real {
+	return New(u.cr, u.rr.ShiftRight(n))
+}
+
 // Negate returns the negation of the current number as a new Real number.
 func (u *Real) Negate() *Real {
 	return New(u.cr, u.rr.Negate())
