@@ -246,6 +246,18 @@ func TestText(t *testing.T) {
 
 	assert.Equal(t, "<undefined: division by zero>", Text(Tangent(Divide(Pi(), FromInt(2))), 70, 10))
 
+	// 2 ^ 3
+	assert.Equal(t,
+		"8.0000000000000000000000000000000000000000000000000000000000000000000000",
+		Text(Pow(FromInt(2), FromInt(3)), 70, 10),
+	)
+
+	// 2 ^ -3
+	assert.Equal(t,
+		"0.1250000000000000000000000000000000000000000000000000000000000000000000",
+		Text(Pow(FromInt(2), FromInt(-3)), 70, 10),
+	)
+
 	// (√π - √3) ^ 8
 	assert.Equal(t,
 		"0.0000000000071008875411429851278570030225300893747800769074951130688105",
