@@ -128,3 +128,10 @@ func (r *Number) IsZero() bool {
 func (r *Number) Cmp(other *Number) int {
 	return r.r.Cmp(other.r)
 }
+
+// String returns the string representation of the rational number. If the
+// denominator is 1, it returns just the numerator. Otherwise, it returns
+// "numerator/denominator".
+func (r *Number) String() string {
+	return r.r.RatString()
+}

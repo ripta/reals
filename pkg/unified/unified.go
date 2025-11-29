@@ -1,6 +1,8 @@
 package unified
 
 import (
+	"fmt"
+
 	"github.com/ripta/reals/pkg/constructive"
 	"github.com/ripta/reals/pkg/rational"
 )
@@ -113,4 +115,28 @@ func (u *Real) IsZero() bool {
 // with the specified number of decimal digits and radix.
 func (u *Real) FormattedString(decimalDigits, radix int) string {
 	return constructive.Text(u.Constructive(), decimalDigits, radix)
+}
+
+var _ fmt.Formatter = (*Real)(nil)
+
+// Format implements the fmt.Formatter interface for custom formatting.
+func (u *Real) Format(f fmt.State, c rune) {
+	switch c {
+	case 'f':
+		precision, ok := f.Precision()
+		if ok {
+			fmt.Fprint(f, u.FormattedString(precision, 10))
+			return
+		}
+
+	case 's', 'q':
+		if u.cr == constructive.One() {
+			fmt.Fprint(f, u.rr.String())
+			return
+		}
+
+	default:
+	}
+
+	fmt.Fprint(f, u.FormattedString(30, 10))
 }
