@@ -78,10 +78,61 @@ func Approximate(c Real, p int) *big.Int {
 	return t.Set(p, s)
 }
 
-// AsConstruction returns a string representing the construction of the Real number c,
-// which may provide insight into how the number is constructed.
+// AsConstruction returns a string representing the construction of the
+// Real number c, which may provide insight into how the number is constructed.
+// The construction is returned as a single line string.
 func AsConstruction(c Real) string {
-	return c.asConstruction()
+	return AsConstructionIndent(c, "")
+}
+
+// AsConstructionIndent returns a string representing the construction of the
+// Real number c, which may provide insight into how the number is constructed.
+//
+// When indent is empty, the construction is returned as a single line string.
+//
+// Otherwise, every opening parenthesis increases the indentation level by one,
+// and every closing parenthesis decreases it by one. Arguments are separated by
+// commas, and each argument starts on a new line with the appropriate indentation.
+func AsConstructionIndent(c Real, indent string) string {
+	data := c.asConstruction()
+	if len(indent) == 0 {
+		return data
+	}
+
+	out := strings.Builder{}
+	currentIndent := 0
+	sawComma := false
+	for i := 0; i < len(data); i++ {
+		ch := data[i]
+		switch ch {
+		case '(':
+			out.WriteByte(ch)
+			currentIndent++
+			out.WriteByte('\n')
+			out.WriteString(strings.Repeat(indent, currentIndent))
+		case ')':
+			currentIndent--
+			out.WriteByte(',')
+			out.WriteByte('\n')
+			out.WriteString(strings.Repeat(indent, currentIndent))
+			out.WriteByte(ch)
+		case ',':
+			out.WriteByte(ch)
+			out.WriteByte('\n')
+			out.WriteString(strings.Repeat(indent, currentIndent))
+			sawComma = true
+			continue
+		case ' ':
+			if !sawComma {
+				out.WriteByte(ch)
+			}
+		default:
+			out.WriteByte(ch)
+		}
+		sawComma = false
+	}
+
+	return out.String()
 }
 
 // Cmp compares two Real numbers a and b with higher and higher

@@ -283,9 +283,10 @@ func assertEqualAtPrecision(t *testing.T, a, b Real, precision int) {
 }
 
 type asConstructionTest struct {
-	name     string
-	input    Real
-	expected string
+	name        string
+	input       Real
+	expected    string
+	expIndented string
 }
 
 var asConstructionTests = []asConstructionTest{
@@ -293,35 +294,116 @@ var asConstructionTests = []asConstructionTest{
 		name:     "integer",
 		input:    FromInt(5),
 		expected: "Int(5)",
+		expIndented: `Int(
+	5,
+)`,
 	},
 	{
 		name:     "addition",
 		input:    Add(FromInt(2), FromInt(3)),
 		expected: "Add(Int(2), Int(3))",
+		expIndented: `Add(
+	Int(
+		2,
+	),
+	Int(
+		3,
+	),
+)`,
 	},
 	{
 		name:     "multiplication",
 		input:    Multiply(FromInt(4), FromInt(5)),
 		expected: "Multiply(Int(4), Int(5))",
+		expIndented: `Multiply(
+	Int(
+		4,
+	),
+	Int(
+		5,
+	),
+)`,
 	},
 	{
 		name:     "division",
 		input:    Divide(Add(FromInt(1), FromInt(2)), Multiply(FromInt(3), FromInt(4))),
 		expected: "Multiply(Add(Int(1), Int(2)), Inverse(Multiply(Int(3), Int(4))))",
+		expIndented: `Multiply(
+	Add(
+		Int(
+			1,
+		),
+		Int(
+			2,
+		),
+	),
+	Inverse(
+		Multiply(
+			Int(
+				3,
+			),
+			Int(
+				4,
+			),
+		),
+	),
+)`,
 	},
 	{
 		name:     "pi",
 		input:    Pi(),
 		expected: `Named("π", Multiply(Int(4), Add(Multiply(Int(6), IntegralArctan(Int(8))), Add(Multiply(Int(2), IntegralArctan(Int(57))), IntegralArctan(Int(239))))))`,
+		expIndented: `Named(
+	"π",
+	Multiply(
+		Int(
+			4,
+		),
+		Add(
+			Multiply(
+				Int(
+					6,
+				),
+				IntegralArctan(
+					Int(
+						8,
+					),
+				),
+			),
+			Add(
+				Multiply(
+					Int(
+						2,
+					),
+					IntegralArctan(
+						Int(
+							57,
+						),
+					),
+				),
+				IntegralArctan(
+					Int(
+						239,
+					),
+				),
+			),
+		),
+	),
+)`,
 	},
 }
 
 func TestAsConstruction(t *testing.T) {
 	for _, test := range asConstructionTests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
 			if result := AsConstruction(test.input); result != test.expected {
 				t.Errorf("expected %s, got %s", test.expected, result)
+			}
+
+			if test.expIndented != "" {
+				if result := AsConstructionIndent(test.input, "\t"); result != test.expIndented {
+					t.Errorf("expected indented:\n%s\ngot:\n%s", test.expIndented, result)
+				}
 			}
 		})
 	}
