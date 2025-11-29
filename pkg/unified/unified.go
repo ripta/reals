@@ -108,3 +108,9 @@ func (u *Real) Inverse() *Real {
 func (u *Real) IsZero() bool {
 	return u.rr.IsZero()
 }
+
+// FormattedString returns a string representation of the unified real number
+// with the specified number of decimal digits and radix.
+func (u *Real) FormattedString(decimalDigits, radix int) string {
+	return constructive.Text(u.Constructive(), decimalDigits, radix)
+}
