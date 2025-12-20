@@ -299,10 +299,22 @@ func TestText(t *testing.T) {
 		Text(Pow(Pi(), E()), 70, 10),
 	)
 
-	// prime constant ρ
+	// prime constant ρ - 48 digits from Wolfram Alpha
 	assert.Equal(t,
-		"0.414682509851111660248109622154307708365774238138",
-		Text(PrimeConstant(), 48, 10),
+		"0.4146825098511116602481096221543077083657742381379",
+		Text(PrimeConstant(), 49, 10),
+	)
+
+	// prime constant ρ - 105 digits from OEIS A051006 reference
+	assert.Equal(t,
+		"0.414682509851111660248109622154307708365774238137916977868245414488640960619357334196290048428475777939616",
+		Text(PrimeConstant(), 105, 10),
+	)
+
+	// prime constant ρ - 200 digits from extended computation
+	assert.Equal(t,
+		"0.41468250985111166024810962215430770836577423813791697786824541448864096061935733419629004842847577793961615935208298595783574997845302200990412081465003395899370197411918628561557923719163725148816107",
+		Text(PrimeConstant(), 200, 10),
 	)
 }
 
@@ -449,5 +461,45 @@ func TestAsConstruction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGeneratePrimes(t *testing.T) {
+	// Test edge cases
+	assert.Equal(t, []int{}, generatePrimes(0))
+	assert.Equal(t, []int{}, generatePrimes(1))
+	assert.Equal(t, []int{2}, generatePrimes(2))
+
+	// Test small ranges
+	assert.Equal(t, []int{2, 3, 5, 7}, generatePrimes(10))
+	assert.Equal(t, []int{2, 3, 5, 7, 11, 13, 17, 19}, generatePrimes(20))
+
+	// Test first 10 primes
+	expected := []int{2, 3, 5, 7, 11, 13, 17, 19, 23, 29}
+	assert.Equal(t, expected, generatePrimes(29))
+
+	// Test count of primes up to 100 (π(100) = 25)
+	primes100 := generatePrimes(100)
+	assert.Equal(t, 25, len(primes100))
+	assert.Equal(t, 2, primes100[0])
+	assert.Equal(t, 97, primes100[24])
+
+	// Test count of primes up to 1000 (π(1000) = 168)
+	primes1000 := generatePrimes(1000)
+	assert.Equal(t, 168, len(primes1000))
+	assert.Equal(t, 2, primes1000[0])
+	assert.Equal(t, 997, primes1000[167])
+
+	// Verify no composite numbers in the result
+	for _, p := range generatePrimes(50) {
+		// Check that p is prime by trial division
+		if p < 2 {
+			t.Errorf("%d is not prime", p)
+		}
+		for i := 2; i*i <= p; i++ {
+			if p%i == 0 && p != i {
+				t.Errorf("%d is not prime (divisible by %d)", p, i)
+			}
+		}
 	}
 }
