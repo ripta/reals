@@ -43,6 +43,10 @@ var Phi = sync.OnceValue(func() *Real {
 	return New(constructive.Phi(), rational.One())
 })
 
+var Sigma = sync.OnceValue(func() *Real {
+	return New(constructive.Sigma(), rational.One())
+})
+
 var Sqrt2 = sync.OnceValue(func() *Real {
 	return New(constructive.Sqrt2(), rational.One())
 })

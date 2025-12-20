@@ -30,6 +30,11 @@ var Phi = sync.OnceValue(func() Real {
 	return newNamed("φ", Divide(Add(FromInt(1), Sqrt(FromInt(5))), FromInt(2)))
 })
 
+// Sigma calculates the silver ratio: σ = 1 + √2
+var Sigma = sync.OnceValue(func() Real {
+	return newNamed("σ", Add(FromInt(1), Sqrt(FromInt(2))))
+})
+
 // Sqrt2 calculates the square root of 2.
 var Sqrt2 = sync.OnceValue(func() Real {
 	return newNamed("√2", Sqrt(FromInt(2)))
