@@ -16,6 +16,13 @@ var Ln2 = sync.OnceValue(func() Real {
 	return newNamed("ln2", Add(Subtract(t1, t2), t3))
 })
 
+// Lemniscate calculates the lemniscate constant ϖ using the formula:
+// ϖ = π / AGM(1, √2), where AGM is the arithmetic-geometric mean
+var Lemniscate = sync.OnceValue(func() Real {
+	agm := newArithmeticGeometricMean(One(), Sqrt2())
+	return newNamed("ϖ", Divide(Pi(), agm))
+})
+
 // Pi calculates π using the Machin-like formula:
 // π = 4 * (6 * arctan(1/8) + 2 * arctan(1/57) + arctan(1/239))
 var Pi = sync.OnceValue(func() Real {

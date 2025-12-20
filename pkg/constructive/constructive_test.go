@@ -137,6 +137,10 @@ func TestPreciseCmp(t *testing.T) {
 	// ln(2) = log_e(2)
 	assertEqualAtPrecision(t, Ln2(), Ln(FromInt(2)), -70)
 
+	// ϖ = π / AGM(1, √2)
+	agm := newArithmeticGeometricMean(One(), Sqrt2())
+	assertEqualAtPrecision(t, Lemniscate(), Divide(Pi(), agm), -100)
+
 	// cos(0) = 1, cos(π/4) = √2/2, cos(π/3) = 1/2, cos(π/2) = 0, cos(π) = -1, cos(2π) = 1
 	assertEqualAtPrecision(t, FromInt(1), Cosine(FromInt(0)), -100)
 	assertEqualAtPrecision(t, Divide(Sqrt2(), FromInt(2)), Cosine(Divide(Pi(), FromInt(4))), -100)
@@ -315,6 +319,18 @@ func TestText(t *testing.T) {
 	assert.Equal(t,
 		"0.41468250985111166024810962215430770836577423813791697786824541448864096061935733419629004842847577793961615935208298595783574997845302200990412081465003395899370197411918628561557923719163725148816107",
 		Text(PrimeConstant(), 200, 10),
+	)
+
+	// lemniscate constant ϖ - 70 digits from OEIS A062539
+	assert.Equal(t,
+		"2.6220575542921198104648395898911194136827549514316231628168217038007906",
+		Text(Lemniscate(), 70, 10),
+	)
+
+	// lemniscate constant ϖ - 90 digits from numberworld.org
+	assert.Equal(t,
+		"2.622057554292119810464839589891119413682754951431623162816821703800790587070414250230295533",
+		Text(Lemniscate(), 90, 10),
 	)
 }
 

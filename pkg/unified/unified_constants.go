@@ -58,3 +58,7 @@ var Sqrt2 = sync.OnceValue(func() *Real {
 var Ln2 = sync.OnceValue(func() *Real {
 	return New(constructive.Ln2(), rational.One())
 })
+
+var Lemniscate = sync.OnceValue(func() *Real {
+	return New(constructive.Lemniscate(), rational.One())
+})
