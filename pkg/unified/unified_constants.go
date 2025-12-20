@@ -43,6 +43,10 @@ var Phi = sync.OnceValue(func() *Real {
 	return New(constructive.Phi(), rational.One())
 })
 
+var PrimeConstant = sync.OnceValue(func() *Real {
+	return New(constructive.PrimeConstant(), rational.One())
+})
+
 var Sigma = sync.OnceValue(func() *Real {
 	return New(constructive.Sigma(), rational.One())
 })

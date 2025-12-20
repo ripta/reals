@@ -298,6 +298,12 @@ func TestText(t *testing.T) {
 		"22.4591577183610454734271522045437350275893151339966922492030025540669260",
 		Text(Pow(Pi(), E()), 70, 10),
 	)
+
+	// prime constant ρ
+	assert.Equal(t,
+		"0.414682509851111660248109622154307708365774238138",
+		Text(PrimeConstant(), 48, 10),
+	)
 }
 
 func checkEpsilon(t *testing.T, exponent int, sh, s1, s2, s3 string) {

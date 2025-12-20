@@ -30,6 +30,11 @@ var Phi = sync.OnceValue(func() Real {
 	return newNamed("φ", Divide(Add(FromInt(1), Sqrt(FromInt(5))), FromInt(2)))
 })
 
+// PrimeConstant calculates the prime constant ρ using its continued fraction representation
+var PrimeConstant = sync.OnceValue(func() Real {
+	return newNamed("ρ", ContinuedFraction64([]int64{0, 2, 2, 2, 3, 12, 131, 1, 7, 1, 2, 1, 3, 3, 1, 2, 5, 39, 2, 1, 169, 2, 2, 2, 1, 1, 2, 5, 1, 2, 1, 199, 24, 7, 7, 1, 163, 1}))
+})
+
 // Sigma calculates the silver ratio: σ = 1 + √2
 var Sigma = sync.OnceValue(func() Real {
 	return newNamed("σ", Add(FromInt(1), Sqrt(FromInt(2))))
