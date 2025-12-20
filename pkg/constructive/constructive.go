@@ -651,8 +651,12 @@ type prescaledExponential struct {
 	r Real
 }
 
-// newPrescaledExponential computes the exponential using a Taylor series
-// expansion.
+// newPrescaledExponential computes the exponential using the Taylor series
+// expansion:
+//
+// e^x = 1 + x/1! + x^2/2! + x^3/3! + ...
+//
+// for |x| < 2.
 func newPrescaledExponential(c Real) Real {
 	return &prescaledExponential{
 		r: c,
@@ -669,9 +673,13 @@ func (c *prescaledExponential) approximate(p int) *big.Int {
 	opPrec := p - 3
 	opAppr := Approximate(c.r, opPrec)
 
+	// Start with term = sum = 1
 	term := bigLsh(big.NewInt(1), uint(-calcPrec))
 	sum := bigLsh(big.NewInt(1), uint(-calcPrec))
 	n := int64(0)
+
+	// Iteratively compute terms until the truncation error is acceptable,
+	// which happens when the term is smaller than the maximum truncation error
 	maxTruncError := bigLsh(big.NewInt(1), uint(p-4-calcPrec))
 	for bigAbs(term).Cmp(maxTruncError) >= 0 {
 		n++
@@ -679,6 +687,7 @@ func (c *prescaledExponential) approximate(p int) *big.Int {
 		term = bigDiv(term, big.NewInt(n))
 		sum = bigAdd(sum, term)
 	}
+
 	return scale(sum, calcPrec-p)
 }
 
