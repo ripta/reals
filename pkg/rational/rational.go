@@ -124,6 +124,11 @@ func (r *Number) IsZero() bool {
 	return r.r.Sign() == 0
 }
 
+// IsInteger returns whether the rational number is an integer.
+func (r *Number) IsInteger() bool {
+	return r.r.IsInt()
+}
+
 // Cmp compares two rational numbers: -1 if r < other, 0 if r == other, 1 if r > other.
 func (r *Number) Cmp(other *Number) int {
 	return r.r.Cmp(other.r)
