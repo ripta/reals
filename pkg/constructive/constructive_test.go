@@ -137,6 +137,10 @@ func TestPreciseCmp(t *testing.T) {
 	// ln(2) = log_e(2)
 	assertEqualAtPrecision(t, Ln2(), Ln(FromInt(2)), -70)
 
+	// ϖ = π / AGM(1, √2)
+	agm := newArithmeticGeometricMean(One(), Sqrt2())
+	assertEqualAtPrecision(t, Lemniscate(), Divide(Pi(), agm), -100)
+
 	// cos(0) = 1, cos(π/4) = √2/2, cos(π/3) = 1/2, cos(π/2) = 0, cos(π) = -1, cos(2π) = 1
 	assertEqualAtPrecision(t, FromInt(1), Cosine(FromInt(0)), -100)
 	assertEqualAtPrecision(t, Divide(Sqrt2(), FromInt(2)), Cosine(Divide(Pi(), FromInt(4))), -100)
@@ -298,6 +302,36 @@ func TestText(t *testing.T) {
 		"22.4591577183610454734271522045437350275893151339966922492030025540669260",
 		Text(Pow(Pi(), E()), 70, 10),
 	)
+
+	// prime constant ρ - 48 digits from Wolfram Alpha
+	assert.Equal(t,
+		"0.4146825098511116602481096221543077083657742381379",
+		Text(PrimeConstant(), 49, 10),
+	)
+
+	// prime constant ρ - 105 digits from OEIS A051006 reference
+	assert.Equal(t,
+		"0.414682509851111660248109622154307708365774238137916977868245414488640960619357334196290048428475777939616",
+		Text(PrimeConstant(), 105, 10),
+	)
+
+	// prime constant ρ - 200 digits from extended computation
+	assert.Equal(t,
+		"0.41468250985111166024810962215430770836577423813791697786824541448864096061935733419629004842847577793961615935208298595783574997845302200990412081465003395899370197411918628561557923719163725148816107",
+		Text(PrimeConstant(), 200, 10),
+	)
+
+	// lemniscate constant ϖ - 70 digits from OEIS A062539
+	assert.Equal(t,
+		"2.6220575542921198104648395898911194136827549514316231628168217038007906",
+		Text(Lemniscate(), 70, 10),
+	)
+
+	// lemniscate constant ϖ - 90 digits from numberworld.org
+	assert.Equal(t,
+		"2.622057554292119810464839589891119413682754951431623162816821703800790587070414250230295533",
+		Text(Lemniscate(), 90, 10),
+	)
 }
 
 func checkEpsilon(t *testing.T, exponent int, sh, s1, s2, s3 string) {
@@ -443,5 +477,45 @@ func TestAsConstruction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGeneratePrimes(t *testing.T) {
+	// Test edge cases
+	assert.Equal(t, []int{}, generatePrimes(0))
+	assert.Equal(t, []int{}, generatePrimes(1))
+	assert.Equal(t, []int{2}, generatePrimes(2))
+
+	// Test small ranges
+	assert.Equal(t, []int{2, 3, 5, 7}, generatePrimes(10))
+	assert.Equal(t, []int{2, 3, 5, 7, 11, 13, 17, 19}, generatePrimes(20))
+
+	// Test first 10 primes
+	expected := []int{2, 3, 5, 7, 11, 13, 17, 19, 23, 29}
+	assert.Equal(t, expected, generatePrimes(29))
+
+	// Test count of primes up to 100 (π(100) = 25)
+	primes100 := generatePrimes(100)
+	assert.Equal(t, 25, len(primes100))
+	assert.Equal(t, 2, primes100[0])
+	assert.Equal(t, 97, primes100[24])
+
+	// Test count of primes up to 1000 (π(1000) = 168)
+	primes1000 := generatePrimes(1000)
+	assert.Equal(t, 168, len(primes1000))
+	assert.Equal(t, 2, primes1000[0])
+	assert.Equal(t, 997, primes1000[167])
+
+	// Verify no composite numbers in the result
+	for _, p := range generatePrimes(50) {
+		// Check that p is prime by trial division
+		if p < 2 {
+			t.Errorf("%d is not prime", p)
+		}
+		for i := 2; i*i <= p; i++ {
+			if p%i == 0 && p != i {
+				t.Errorf("%d is not prime (divisible by %d)", p, i)
+			}
+		}
 	}
 }

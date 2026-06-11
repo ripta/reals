@@ -16,6 +16,13 @@ var Ln2 = sync.OnceValue(func() Real {
 	return newNamed("ln2", Add(Subtract(t1, t2), t3))
 })
 
+// Lemniscate calculates the lemniscate constant ϖ using the formula:
+// ϖ = π / AGM(1, √2), where AGM is the arithmetic-geometric mean
+var Lemniscate = sync.OnceValue(func() Real {
+	agm := newArithmeticGeometricMean(One(), Sqrt2())
+	return newNamed("ϖ", Divide(Pi(), agm))
+})
+
 // Pi calculates π using the Machin-like formula:
 // π = 4 * (6 * arctan(1/8) + 2 * arctan(1/57) + arctan(1/239))
 var Pi = sync.OnceValue(func() Real {
@@ -28,6 +35,16 @@ var Pi = sync.OnceValue(func() Real {
 // Phi calculates the golden ratio: φ = (1 + √5) / 2
 var Phi = sync.OnceValue(func() Real {
 	return newNamed("φ", Divide(Add(FromInt(1), Sqrt(FromInt(5))), FromInt(2)))
+})
+
+// PrimeConstant calculates the prime constant ρ using direct summation: ρ = Σ(1/2^p) for all primes p
+var PrimeConstant = sync.OnceValue(func() Real {
+	return newNamed("ρ", newPrimeConstantSummation())
+})
+
+// Sigma calculates the silver ratio: σ = 1 + √2
+var Sigma = sync.OnceValue(func() Real {
+	return newNamed("σ", Add(FromInt(1), Sqrt(FromInt(2))))
 })
 
 // Sqrt2 calculates the square root of 2.

@@ -924,6 +924,55 @@ func (c *prescaledCosine) asConstruction() string {
 	return fmt.Sprintf("Cosine(%s)", c.r.asConstruction())
 }
 
+type primeConstantSummation struct {
+	precisionTracker
+}
+
+// newPrimeConstantSummation computes the Prime Constant ρ using direct summation:
+// ρ = Σ(1/2^p) for all primes p, by definition
+//
+// The sum converges rapidly as each term 1/2^p decreases exponentially.
+func newPrimeConstantSummation() Real {
+	return &primeConstantSummation{}
+}
+
+func (c *primeConstantSummation) approximate(p int) *big.Int {
+	if p >= 1 {
+		return big.NewInt(0)
+	}
+
+	// need 1/2^prime < 2^p, so prime > -p; plus safety margin 100(?)
+	maxPrime := -p + 100
+	if maxPrime < 2 {
+		maxPrime = 2
+	}
+	if maxPrime > 2000 {
+		maxPrime = 2000 // is this enough?
+	}
+
+	primes := generatePrimes(maxPrime)
+
+	calcPrec := p - boundLog2(len(primes)) - 4
+	sum := big.NewInt(0)
+
+	// For each prime, compute 1/2^prime and add to the running sum
+	//
+	// 2^(-calcPrec) / 2^prime = 2^(-calcPrec-prime)
+	// which is: 1 << (-calcPrec-prime) in fixed-point
+	for _, prime := range primes {
+		if prime+calcPrec <= 0 {
+			term := bigLsh(big.NewInt(1), uint(-calcPrec-prime))
+			sum = bigAdd(sum, term)
+		}
+	}
+
+	return scale(sum, calcPrec-p)
+}
+
+func (c *primeConstantSummation) asConstruction() string {
+	return "PrimeConstantSum()"
+}
+
 // Pow computes the power c^n.
 func Pow(c, n Real) Real {
 	return Exp(Multiply(Ln(c), n))
