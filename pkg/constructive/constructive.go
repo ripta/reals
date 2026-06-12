@@ -589,6 +589,76 @@ func Min(a, b Real) Real {
 	return newCondsign(Subtract(a, b), a, b)
 }
 
+// roundPrecision is the fixed bit precision at which Floor, Ceil, Round, and
+// RoundToEven decide integer boundaries. A value indistinguishable from an
+// integer at this precision snaps to that integer; exact rationals are decided
+// exactly regardless of the bound.
+const roundPrecision = -128
+
+// floorInt computes the greatest integer less than or equal to c at precision p.
+// The nearest integer n to c lies within half a unit, so the floor is n when
+// c >= n and n-1 otherwise; the boundary is decided with PreciseSign rather than
+// the non-terminating Sign.
+func floorInt(c Real, p int) *big.Int {
+	n := scale(Approximate(c, p), p)
+	if PreciseSign(Subtract(c, FromBigInt(n)), p) < 0 {
+		return bigSub(n, big.NewInt(1))
+	}
+
+	return n
+}
+
+// roundParts returns the floor f of c and the sign of 2*(c-f) - 1, the
+// fractional part compared against one half, both at precision p.
+func roundParts(c Real, p int) (*big.Int, int) {
+	f := floorInt(c, p)
+	frac := Subtract(c, FromBigInt(f))
+
+	return f, PreciseCmp(ShiftLeft(frac, 1), One(), p)
+}
+
+// Floor computes the greatest integer less than or equal to c.
+func Floor(c Real) Real {
+	return FromBigInt(floorInt(c, roundPrecision))
+}
+
+// Ceil computes the least integer greater than or equal to c.
+func Ceil(c Real) Real {
+	return FromBigInt(bigNeg(floorInt(Negate(c), roundPrecision)))
+}
+
+// Round computes the nearest integer to c, rounding half away from zero.
+func Round(c Real) Real {
+	f, half := roundParts(c, roundPrecision)
+	switch {
+	case half < 0:
+		return FromBigInt(f)
+	case half > 0:
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	default:
+		if PreciseSign(c, roundPrecision) < 0 {
+			return FromBigInt(f)
+		}
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	}
+}
+
+// RoundToEven computes the nearest integer to c, rounding ties to even.
+func RoundToEven(c Real) Real {
+	f, half := roundParts(c, roundPrecision)
+	switch {
+	case half < 0:
+		return FromBigInt(f)
+	case half > 0:
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	default:
+		if f.Bit(0) == 0 {
+			return FromBigInt(f)
+		}
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	}
+}
+
 type constructiveCondsign struct {
 	precisionTracker
 	a Real

@@ -522,3 +522,80 @@ func TestGeneratePrimes(t *testing.T) {
 		}
 	}
 }
+
+type roundingTest struct {
+	name     string
+	input    Real
+	expected int64
+}
+
+var floorTests = []roundingTest{
+	{"Floor(2.4)=2", FromRat(12, 5), 2},
+	{"Floor(2.6)=2", FromRat(13, 5), 2},
+	{"Floor(-2.4)=-3", FromRat(-12, 5), -3},
+	{"Floor(-2.6)=-3", FromRat(-13, 5), -3},
+	{"Floor(3)=3", FromInt64(3), 3},
+	{"Floor(0)=0", FromInt64(0), 0},
+	{"Floor(sqrt(4))=2", Sqrt(FromInt64(4)), 2},
+}
+
+func TestFloor(t *testing.T) {
+	for _, test := range floorTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), Floor(test.input), -50)
+		})
+	}
+}
+
+var ceilTests = []roundingTest{
+	{"Ceil(2.4)=3", FromRat(12, 5), 3},
+	{"Ceil(2.6)=3", FromRat(13, 5), 3},
+	{"Ceil(-2.4)=-2", FromRat(-12, 5), -2},
+	{"Ceil(3)=3", FromInt64(3), 3},
+	{"Ceil(0)=0", FromInt64(0), 0},
+	{"Ceil(sqrt(4))=2", Sqrt(FromInt64(4)), 2},
+}
+
+func TestCeil(t *testing.T) {
+	for _, test := range ceilTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), Ceil(test.input), -50)
+		})
+	}
+}
+
+var roundTests = []roundingTest{
+	{"Round(2.4)=2", FromRat(12, 5), 2},
+	{"Round(2.6)=3", FromRat(13, 5), 3},
+	{"Round(-2.6)=-3", FromRat(-13, 5), -3},
+	{"Round(2.5)=3", FromRat(5, 2), 3},
+	{"Round(-2.5)=-3", FromRat(-5, 2), -3},
+	{"Round(0.5)=1", FromRat(1, 2), 1},
+	{"Round(-0.5)=-1", FromRat(-1, 2), -1},
+	{"Round(0)=0", FromInt64(0), 0},
+}
+
+func TestRound(t *testing.T) {
+	for _, test := range roundTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), Round(test.input), -50)
+		})
+	}
+}
+
+var roundToEvenTests = []roundingTest{
+	{"RoundToEven(2.4)=2", FromRat(12, 5), 2},
+	{"RoundToEven(2.5)=2", FromRat(5, 2), 2},
+	{"RoundToEven(3.5)=4", FromRat(7, 2), 4},
+	{"RoundToEven(-2.5)=-2", FromRat(-5, 2), -2},
+	{"RoundToEven(-3.5)=-4", FromRat(-7, 2), -4},
+	{"RoundToEven(0.5)=0", FromRat(1, 2), 0},
+}
+
+func TestRoundToEven(t *testing.T) {
+	for _, test := range roundToEvenTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), RoundToEven(test.input), -50)
+		})
+	}
+}
