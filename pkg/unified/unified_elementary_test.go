@@ -306,3 +306,110 @@ func TestCbrt(t *testing.T) {
 		})
 	}
 }
+
+// piFrac builds the unified Real (a/b)·π, used for expected inverse-trig angles.
+func piFrac(a, b int64) *Real {
+	return New(constructive.Pi(), rational.New64(a, b))
+}
+
+// sqrt3 is √3 as a unified Real.
+func sqrt3() *Real {
+	return New(constructive.Sqrt(constructive.FromInt(3)), rational.One())
+}
+
+var atanTests = []unaryTest{
+	{name: "Atan(0)=0", input: Zero(), expected: Zero()},
+	{name: "Atan(1)=pi/4", input: One(), expected: piFrac(1, 4)},
+	{name: "Atan(-1)=-pi/4", input: NegativeOne(), expected: piFrac(-1, 4)},
+	{name: "Atan(sqrt3)=pi/3", input: sqrt3(), expected: piFrac(1, 3)},
+	{name: "Atan(1/sqrt3)=pi/6", input: New(constructive.Sqrt(constructive.FromInt(3)), rational.New64(1, 3)), expected: piFrac(1, 6)},
+}
+
+func TestAtan(t *testing.T) {
+	for _, test := range atanTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, test.expected, test.input.Atan(), -100)
+		})
+	}
+}
+
+var asinTests = []partialUnaryTest{
+	{name: "Asin(0)=0", input: Zero(), expected: Zero()},
+	{name: "Asin(1/2)=pi/6", input: rat(1, 2), expected: piFrac(1, 6)},
+	{name: "Asin(1)=pi/2", input: One(), expected: piFrac(1, 2)},
+	{name: "Asin(-1)=-pi/2", input: NegativeOne(), expected: piFrac(-1, 2)},
+	{name: "Asin(2)", input: rat(2, 1), wantErr: ErrOutsideUnitInterval},
+	{name: "Asin(-2)", input: rat(-2, 1), wantErr: ErrOutsideUnitInterval},
+}
+
+func TestAsin(t *testing.T) {
+	for _, test := range asinTests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Asin()
+			if test.wantErr != nil {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}
+
+var acosTests = []partialUnaryTest{
+	{name: "Acos(1)=0", input: One(), expected: Zero()},
+	{name: "Acos(-1)=pi", input: NegativeOne(), expected: Pi()},
+	{name: "Acos(0)=pi/2", input: Zero(), expected: piFrac(1, 2)},
+	{name: "Acos(1/2)=pi/3", input: rat(1, 2), expected: piFrac(1, 3)},
+	{name: "Acos(2)", input: rat(2, 1), wantErr: ErrOutsideUnitInterval},
+}
+
+func TestAcos(t *testing.T) {
+	for _, test := range acosTests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Acos()
+			if test.wantErr != nil {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}
+
+type binaryPartialTest struct {
+	name     string
+	y, x     *Real
+	expected *Real
+	wantErr  error
+}
+
+var atan2Tests = []binaryPartialTest{
+	{name: "Atan2(1,1)=pi/4", y: One(), x: One(), expected: piFrac(1, 4)},
+	{name: "Atan2(1,-1)=3pi/4", y: One(), x: NegativeOne(), expected: piFrac(3, 4)},
+	{name: "Atan2(-1,-1)=-3pi/4", y: NegativeOne(), x: NegativeOne(), expected: piFrac(-3, 4)},
+	{name: "Atan2(-1,1)=-pi/4", y: NegativeOne(), x: One(), expected: piFrac(-1, 4)},
+	{name: "Atan2(1,0)=pi/2", y: One(), x: Zero(), expected: piFrac(1, 2)},
+	{name: "Atan2(-1,0)=-pi/2", y: NegativeOne(), x: Zero(), expected: piFrac(-1, 2)},
+	{name: "Atan2(0,1)=0", y: Zero(), x: One(), expected: Zero()},
+	{name: "Atan2(0,-1)=pi", y: Zero(), x: NegativeOne(), expected: Pi()},
+	{name: "Atan2(0,0)", y: Zero(), x: Zero(), wantErr: ErrUndefinedAtOrigin},
+}
+
+func TestAtan2(t *testing.T) {
+	for _, test := range atan2Tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.y.Atan2(test.x)
+			if test.wantErr != nil {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}

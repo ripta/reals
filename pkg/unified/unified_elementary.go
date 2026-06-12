@@ -22,6 +22,19 @@ var ErrNegative = errors.New("argument must be non-negative")
 // for which the logarithm is undefined.
 var ErrInvalidBase = errors.New("base must not be equal to one")
 
+// ErrOutsideUnitInterval indicates that a function requires an argument in
+// [-1, 1], such as the argument of arcsine or arccosine.
+var ErrOutsideUnitInterval = errors.New("argument must be in [-1, 1]")
+
+// ErrUndefinedAtOrigin indicates that atan2 was called with both arguments
+// zero, where the angle is undefined.
+var ErrUndefinedAtOrigin = errors.New("atan2 is undefined at the origin")
+
+// halfPi is π/2, computed once and reused by the inverse-trig endpoints.
+var halfPi = sync.OnceValue(func() *Real {
+	return Pi().ShiftRight(1)
+})
+
 // ln10 is the natural logarithm of ten, computed once and reused as the
 // denominator of Log10.
 var ln10 = sync.OnceValue(func() *Real {
@@ -199,4 +212,92 @@ func (u *Real) Cbrt() *Real {
 		return result.Negate()
 	}
 	return result
+}
+
+// Atan returns the arctangent of u, in radians. It is total.
+func (u *Real) Atan() *Real {
+	return New(constructive.Arctangent(u.Constructive()), rational.One())
+}
+
+// Asin returns the arcsine of u, in radians. It requires an argument in
+// [-1, 1] and returns ErrOutsideUnitInterval otherwise. The endpoints ±1 are
+// special-cased to ±π/2, where the derived form atan(x / sqrt(1 - x²)) would
+// divide by zero. Endpoint detection is structural and so recognizes only the
+// rational ±1, since constructive reals cannot decide equality in general.
+func (u *Real) Asin() (*Real, error) {
+	if s := u.unitEndpoint(); s != 0 {
+		if s > 0 {
+			return halfPi(), nil
+		}
+		return halfPi().Negate(), nil
+	}
+
+	c := u.Constructive()
+	s := constructive.Subtract(constructive.One(), constructive.Square(c))
+	if constructive.Sign(s) < 0 {
+		return nil, fmt.Errorf("Asin: %w", ErrOutsideUnitInterval)
+	}
+	inner := constructive.Divide(c, constructive.Sqrt(s))
+	return New(constructive.Arctangent(inner), rational.One()), nil
+}
+
+// Acos returns the arccosine of u, in radians, as π/2 - asin(u). It requires an
+// argument in [-1, 1] and returns ErrOutsideUnitInterval otherwise.
+func (u *Real) Acos() (*Real, error) {
+	asin, err := u.Asin()
+	if err != nil {
+		return nil, fmt.Errorf("Acos: %w", ErrOutsideUnitInterval)
+	}
+	return halfPi().Subtract(asin), nil
+}
+
+// Atan2 returns the angle, in radians, of the point (x, y) measured from the
+// positive x-axis, where the receiver is y. The result lies in (-π, π]. Both
+// arguments zero returns ErrUndefinedAtOrigin.
+func (y *Real) Atan2(x *Real) (*Real, error) {
+	xZero := x.IsZero()
+	yZero := y.IsZero()
+	if xZero && yZero {
+		return nil, fmt.Errorf("Atan2: %w", ErrUndefinedAtOrigin)
+	}
+	if xZero {
+		if y.sign() > 0 {
+			return halfPi(), nil
+		}
+		return halfPi().Negate(), nil
+	}
+
+	base := y.Divide(x).Atan()
+	if x.sign() > 0 {
+		return base, nil
+	}
+	if y.sign() >= 0 {
+		return base.Add(Pi()), nil
+	}
+	return base.Subtract(Pi()), nil
+}
+
+// unitEndpoint reports +1 if u is exactly +1, -1 if exactly -1, and 0
+// otherwise. Detection is structural: it recognizes the rational ±1, since
+// constructive reals cannot decide equality in general.
+func (u *Real) unitEndpoint() int {
+	if u.cr != constructive.One() {
+		return 0
+	}
+	switch {
+	case u.rr.Cmp(rational.One()) == 0:
+		return 1
+	case u.rr.Cmp(rational.One().Negate()) == 0:
+		return -1
+	}
+	return 0
+}
+
+// sign returns the sign of u: 0 when u is structurally zero, otherwise the
+// constructive sign, which terminates for nonzero values.
+func (u *Real) sign() int {
+	if u.IsZero() {
+		return 0
+	}
+	return constructive.Sign(u.Constructive())
 }
