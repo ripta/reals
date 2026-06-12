@@ -3,6 +3,7 @@ package unified
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/ripta/reals/pkg/constructive"
 	"github.com/ripta/reals/pkg/rational"
@@ -16,6 +17,16 @@ var ErrNonPositive = errors.New("argument must be positive")
 // ErrNegative ndicates that a function requires a non-negative argument, such
 // as the radicand of a square root.
 var ErrNegative = errors.New("argument must be non-negative")
+
+// ErrInvalidBase indicates a logarithm base that is positive but equal to one,
+// for which the logarithm is undefined.
+var ErrInvalidBase = errors.New("base must not be equal to one")
+
+// ln10 is the natural logarithm of ten, computed once and reused as the
+// denominator of Log10.
+var ln10 = sync.OnceValue(func() *Real {
+	return New(constructive.Ln(Ten().Constructive()), rational.One())
+})
 
 // Sin returns the sine of u, in radians.
 func (u *Real) Sin() *Real {
@@ -109,4 +120,83 @@ func (u *Real) Pow(n *Real) (*Real, error) {
 	}
 
 	return New(constructive.Pow(c, n.Constructive()), rational.One()), nil
+}
+
+// Log10 returns the base-10 logarithm of u. It requires a positive argument and
+// returns ErrNonPositive otherwise.
+func (u *Real) Log10() (*Real, error) {
+	c := u.Constructive()
+	if u.IsZero() || constructive.Sign(c) < 0 {
+		return nil, fmt.Errorf("Log10: %w", ErrNonPositive)
+	}
+	return New(constructive.Ln(c), rational.One()).Divide(ln10()), nil
+}
+
+// Log2 returns the base-2 logarithm of u. It requires a positive argument and
+// returns ErrNonPositive otherwise.
+func (u *Real) Log2() (*Real, error) {
+	c := u.Constructive()
+	if u.IsZero() || constructive.Sign(c) < 0 {
+		return nil, fmt.Errorf("Log2: %w", ErrNonPositive)
+	}
+	return New(constructive.Ln(c), rational.One()).Divide(Ln2()), nil
+}
+
+// Log returns the logarithm of u in the given base. It requires a positive
+// argument and a positive base; a non-positive argument or base returns
+// ErrNonPositive, and a base of one returns ErrInvalidBase.
+func (u *Real) Log(base *Real) (*Real, error) {
+	c := u.Constructive()
+	if u.IsZero() || constructive.Sign(c) < 0 {
+		return nil, fmt.Errorf("Log: %w", ErrNonPositive)
+	}
+
+	bc := base.Constructive()
+	if base.IsZero() || constructive.Sign(bc) < 0 {
+		return nil, fmt.Errorf("Log: %w", ErrNonPositive)
+	}
+	if base.cr == constructive.One() && base.rr.Cmp(rational.One()) == 0 {
+		return nil, fmt.Errorf("Log: %w", ErrInvalidBase)
+	}
+
+	num := New(constructive.Ln(c), rational.One())
+	den := New(constructive.Ln(bc), rational.One())
+	return num.Divide(den), nil
+}
+
+// Sinh returns the hyperbolic sine of u.
+func (u *Real) Sinh() *Real {
+	ex := u.Exp()
+	enx := u.Negate().Exp()
+	return ex.Subtract(enx).ShiftRight(1)
+}
+
+// Cosh returns the hyperbolic cosine of u.
+func (u *Real) Cosh() *Real {
+	ex := u.Exp()
+	enx := u.Negate().Exp()
+	return ex.Add(enx).ShiftRight(1)
+}
+
+// Tanh returns the hyperbolic tangent of u.
+func (u *Real) Tanh() *Real {
+	ex := u.Exp()
+	enx := u.Negate().Exp()
+	return ex.Subtract(enx).Divide(ex.Add(enx))
+}
+
+// Cbrt returns the real cube root of u. It is total: it accepts negative input,
+// so Cbrt(-8) is -2, and Cbrt(0) is 0. The cube root of a negative value is
+// computed by sign extraction over Pow(|u|, 1/3), keeping the result real.
+func (u *Real) Cbrt() *Real {
+	if u.IsZero() {
+		return Zero()
+	}
+
+	third := New(constructive.One(), rational.New64(1, 3))
+	result, _ := u.Abs().Pow(third)
+	if constructive.Sign(u.Constructive()) < 0 {
+		return result.Negate()
+	}
+	return result
 }

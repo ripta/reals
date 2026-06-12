@@ -175,3 +175,134 @@ func TestPow(t *testing.T) {
 		})
 	}
 }
+
+var log10Tests = []partialUnaryTest{
+	{name: "Log10(1)=0", input: rat(1, 1), expected: Zero()},
+	{name: "Log10(1000)=3", input: rat(1000, 1), expected: rat(3, 1)},
+	{name: "Log10(0)", input: Zero(), wantErr: ErrNonPositive},
+	{name: "Log10(-1)", input: NegativeOne(), wantErr: ErrNonPositive},
+}
+
+func TestLog10(t *testing.T) {
+	for _, test := range log10Tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Log10()
+			if test.wantErr != nil {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}
+
+var log2Tests = []partialUnaryTest{
+	{name: "Log2(1)=0", input: rat(1, 1), expected: Zero()},
+	{name: "Log2(8)=3", input: rat(8, 1), expected: rat(3, 1)},
+	{name: "Log2(0)", input: Zero(), wantErr: ErrNonPositive},
+	{name: "Log2(-1)", input: NegativeOne(), wantErr: ErrNonPositive},
+}
+
+func TestLog2(t *testing.T) {
+	for _, test := range log2Tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Log2()
+			if test.wantErr != nil {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}
+
+type logTest struct {
+	name     string
+	input    *Real
+	base     *Real
+	expected *Real
+	wantErr  error
+}
+
+var logTests = []logTest{
+	{name: "Log(81,3)=4", input: rat(81, 1), base: rat(3, 1), expected: rat(4, 1)},
+	{name: "Log(1000,10)=3", input: rat(1000, 1), base: rat(10, 1), expected: rat(3, 1)},
+	{name: "Log(0,2)", input: Zero(), base: rat(2, 1), wantErr: ErrNonPositive},
+	{name: "Log(-1,2)", input: NegativeOne(), base: rat(2, 1), wantErr: ErrNonPositive},
+	{name: "Log(8,0)", input: rat(8, 1), base: Zero(), wantErr: ErrNonPositive},
+	{name: "Log(8,-2)", input: rat(8, 1), base: rat(-2, 1), wantErr: ErrNonPositive},
+	{name: "Log(8,1)", input: rat(8, 1), base: One(), wantErr: ErrInvalidBase},
+}
+
+func TestLog(t *testing.T) {
+	for _, test := range logTests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Log(test.base)
+			if test.wantErr != nil {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, result, -100)
+		})
+	}
+}
+
+var sinhTests = []unaryTest{
+	{name: "Sinh(0)=0", input: Zero(), expected: Zero()},
+	{name: "Sinh(1)=(e-1/e)/2", input: One(), expected: E().Subtract(E().Inverse()).ShiftRight(1)},
+}
+
+func TestSinh(t *testing.T) {
+	for _, test := range sinhTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, test.expected, test.input.Sinh(), -100)
+		})
+	}
+}
+
+var coshTests = []unaryTest{
+	{name: "Cosh(0)=1", input: Zero(), expected: One()},
+	{name: "Cosh(1)=(e+1/e)/2", input: One(), expected: E().Add(E().Inverse()).ShiftRight(1)},
+}
+
+func TestCosh(t *testing.T) {
+	for _, test := range coshTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, test.expected, test.input.Cosh(), -100)
+		})
+	}
+}
+
+var tanhTests = []unaryTest{
+	{name: "Tanh(0)=0", input: Zero(), expected: Zero()},
+	{name: "Tanh(1)=sinh/cosh", input: One(), expected: One().Sinh().Divide(One().Cosh())},
+}
+
+func TestTanh(t *testing.T) {
+	for _, test := range tanhTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, test.expected, test.input.Tanh(), -100)
+		})
+	}
+}
+
+var cbrtTests = []unaryTest{
+	{name: "Cbrt(0)=0", input: Zero(), expected: Zero()},
+	{name: "Cbrt(8)=2", input: rat(8, 1), expected: rat(2, 1)},
+	{name: "Cbrt(-8)=-2", input: rat(-8, 1), expected: rat(-2, 1)},
+	{name: "Cbrt(27)=3", input: rat(27, 1), expected: rat(3, 1)},
+}
+
+func TestCbrt(t *testing.T) {
+	for _, test := range cbrtTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, test.expected, test.input.Cbrt(), -100)
+		})
+	}
+}
