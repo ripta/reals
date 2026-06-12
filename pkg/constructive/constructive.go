@@ -589,12 +589,6 @@ func Min(a, b Real) Real {
 	return newCondsign(Subtract(a, b), a, b)
 }
 
-// roundPrecision is the fixed bit precision at which Floor, Ceil, Round, and
-// RoundToEven decide integer boundaries. A value indistinguishable from an
-// integer at this precision snaps to that integer; exact rationals are decided
-// exactly regardless of the bound.
-const roundPrecision = -128
-
 // floorInt computes the greatest integer less than or equal to c at precision p.
 // The nearest integer n to c lies within half a unit, so the floor is n when
 // c >= n and n-1 otherwise; the boundary is decided with PreciseSign rather than
@@ -617,35 +611,42 @@ func roundParts(c Real, p int) (*big.Int, int) {
 	return f, PreciseCmp(ShiftLeft(frac, 1), One(), p)
 }
 
-// Floor computes the greatest integer less than or equal to c.
-func Floor(c Real) Real {
-	return FromBigInt(floorInt(c, roundPrecision))
+// Floor computes the greatest integer less than or equal to c, deciding the
+// integer boundary at precision p. A value indistinguishable from an integer at
+// p snaps to that integer; an exact rational is decided exactly regardless of p.
+func Floor(c Real, p int) Real {
+	return FromBigInt(floorInt(c, p))
 }
 
-// Ceil computes the least integer greater than or equal to c.
-func Ceil(c Real) Real {
-	return FromBigInt(bigNeg(floorInt(Negate(c), roundPrecision)))
+// Ceil computes the least integer greater than or equal to c, deciding the
+// integer boundary at precision p.
+func Ceil(c Real, p int) Real {
+	return FromBigInt(bigNeg(floorInt(Negate(c), p)))
 }
 
-// Round computes the nearest integer to c, rounding half away from zero.
-func Round(c Real) Real {
-	f, half := roundParts(c, roundPrecision)
+// Round computes the nearest integer to c, rounding half away from zero, deciding
+// the integer boundary at precision p. An exact halfway tie is not finitely
+// decidable, so a value indistinguishable from a half-integer at p is treated as
+// a tie.
+func Round(c Real, p int) Real {
+	f, half := roundParts(c, p)
 	switch {
 	case half < 0:
 		return FromBigInt(f)
 	case half > 0:
 		return FromBigInt(bigAdd(f, big.NewInt(1)))
 	default:
-		if PreciseSign(c, roundPrecision) < 0 {
+		if PreciseSign(c, p) < 0 {
 			return FromBigInt(f)
 		}
 		return FromBigInt(bigAdd(f, big.NewInt(1)))
 	}
 }
 
-// RoundToEven computes the nearest integer to c, rounding ties to even.
-func RoundToEven(c Real) Real {
-	f, half := roundParts(c, roundPrecision)
+// RoundToEven computes the nearest integer to c, rounding ties to even, deciding
+// the integer boundary at precision p.
+func RoundToEven(c Real, p int) Real {
+	f, half := roundParts(c, p)
 	switch {
 	case half < 0:
 		return FromBigInt(f)

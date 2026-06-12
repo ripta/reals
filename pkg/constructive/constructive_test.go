@@ -542,7 +542,7 @@ var floorTests = []roundingTest{
 func TestFloor(t *testing.T) {
 	for _, test := range floorTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), Floor(test.input), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), Floor(test.input, -50), -50)
 		})
 	}
 }
@@ -559,7 +559,7 @@ var ceilTests = []roundingTest{
 func TestCeil(t *testing.T) {
 	for _, test := range ceilTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), Ceil(test.input), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), Ceil(test.input, -50), -50)
 		})
 	}
 }
@@ -578,7 +578,7 @@ var roundTests = []roundingTest{
 func TestRound(t *testing.T) {
 	for _, test := range roundTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), Round(test.input), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), Round(test.input, -50), -50)
 		})
 	}
 }
@@ -595,7 +595,7 @@ var roundToEvenTests = []roundingTest{
 func TestRoundToEven(t *testing.T) {
 	for _, test := range roundToEvenTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), RoundToEven(test.input), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), RoundToEven(test.input, -50), -50)
 		})
 	}
 }
