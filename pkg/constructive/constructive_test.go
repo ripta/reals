@@ -164,12 +164,15 @@ func TestPreciseCmp(t *testing.T) {
 	assertEqualAtPrecision(t, Zero(), Tangent(Pi()), -100)
 	assertEqualAtPrecision(t, Zero(), Tangent(Multiply(FromInt(2), Pi())), -100)
 
-	// TODO(ripta): never terminates
-	// atan(0) = 0, atan(1) = π/4, atan(√3) = π/3, atan(∞) = π/2
-	// assertEqualAtPrecision(t, FromInt(0), Arctangent(FromInt(0)), -100)
-	// assertEqualAtPrecision(t, Divide(Pi(), FromInt(4)), Arctangent(FromInt(1)), -100)
-	// assertEqualAtPrecision(t, Divide(Pi(), FromInt(3)), Arctangent(Sqrt(FromInt(3))), -100)
-	// assertEqualAtPrecision(t, Divide(Pi(), FromInt(2)), Arctangent(FromInt(1<<1000)), -100)
+	// atan(0) = 0, atan(1) = π/4, atan(-1) = -π/4, atan(√3) = π/3,
+	// atan(1/√3) = π/6, atan(2^1000) ≈ π/2, and tan(atan(x)) = x round-trip
+	assertEqualAtPrecision(t, FromInt(0), Arctangent(FromInt(0)), -100)
+	assertEqualAtPrecision(t, Divide(Pi(), FromInt(4)), Arctangent(FromInt(1)), -100)
+	assertEqualAtPrecision(t, Negate(Divide(Pi(), FromInt(4))), Arctangent(FromInt(-1)), -100)
+	assertEqualAtPrecision(t, Divide(Pi(), FromInt(3)), Arctangent(Sqrt(FromInt(3))), -100)
+	assertEqualAtPrecision(t, Divide(Pi(), FromInt(6)), Arctangent(Inverse(Sqrt(FromInt(3)))), -100)
+	assertEqualAtPrecision(t, ShiftRight(Pi(), 1), Arctangent(ShiftLeft(FromInt(1), 1000)), -100)
+	assertEqualAtPrecision(t, FromRat(7, 13), Tangent(Arctangent(FromRat(7, 13))), -100)
 
 	// 47/17 = [2; 1, 3, 4]
 	assertEqualAtPrecision(t, Divide(FromInt(47), FromInt(17)), ContinuedFraction64([]int64{2, 1, 3, 4}), -100)

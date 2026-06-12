@@ -876,12 +876,82 @@ func Tangent(c Real) Real {
 	return Divide(Sine(c), Cosine(c))
 }
 
-// Arctangent computes the arctangent of c, using the integral formula.
+// Arctangent computes the arctangent of c, returning radians.
 //
-// TODO(ripta): never terminates
-// func Arctangent(c Real) Real {
-//	return newIntegralArctan(Inverse(c))
-// }
+// The Maclaurin series converges only for |x| < 1 and grinds to a halt as
+// |x| approaches 1, so the argument is first reduced into the kernel's fast
+// region. Odd symmetry strips the sign, the reciprocal identity
+// `atan(x) = π/2 - atan(1/x)` folds large arguments toward zero, and two
+// half-angle reductions pull the result below 1/4 before the series runs.
+func Arctangent(c Real) Real {
+	rough := Approximate(c, -3)
+	if rough.Sign() < 0 {
+		return Negate(Arctangent(Negate(c)))
+	}
+	if rough.Cmp(big.NewInt(8)) >= 0 {
+		return Subtract(ShiftRight(Pi(), 1), arctanReduced(Inverse(c)))
+	}
+	return arctanReduced(c)
+}
+
+// arctanReduced applies the half-angle reduction `atan(x) = 2·atan(x / (1 +
+// √(1 + x²)))` twice, driving 0 ≤ x ≲ 1 below 1/4, then runs the series. The
+// two doublings are undone by the left shift of 2.
+func arctanReduced(c Real) Real {
+	for i := 0; i < 2; i++ {
+		c = Divide(c, Add(One(), Sqrt(Add(One(), Square(c)))))
+	}
+	return ShiftLeft(newPrescaledArctan(c), 2)
+}
+
+type prescaledArctan struct {
+	precisionTracker
+	r Real
+}
+
+// newPrescaledArctan computes the arctangent using the Maclaurin series
+// expansion:
+//
+// arctan(x) = x - x^3/3 + x^5/5 - x^7/7 + ...
+//
+// for |x| < 1/4.
+func newPrescaledArctan(c Real) Real {
+	return &prescaledArctan{
+		r: c,
+	}
+}
+
+func (c *prescaledArctan) approximate(p int) *big.Int {
+	if p >= 1 {
+		return big.NewInt(0)
+	}
+
+	iters := -p/2 + 2
+	calcPrec := p - boundLog2(2*iters) - 4
+	opPrec := p - 3
+	opAppr := Approximate(c.r, opPrec)
+
+	xToTheN := scale(opAppr, opPrec-calcPrec)
+	term := xToTheN
+	sum := term
+	n := int64(1)
+	sign := int64(1)
+	maxTruncError := bigLsh(big.NewInt(1), uint(p-4-calcPrec))
+	for bigAbs(term).Cmp(maxTruncError) >= 0 {
+		n += 2
+		sign = -sign
+
+		xToTheN = scale(bigMul(xToTheN, opAppr), opPrec)
+		xToTheN = scale(bigMul(xToTheN, opAppr), opPrec)
+		term = bigDiv(xToTheN, big.NewInt(sign*n))
+		sum = bigAdd(sum, term)
+	}
+	return scale(sum, calcPrec-p)
+}
+
+func (c *prescaledArctan) asConstruction() string {
+	return fmt.Sprintf("Arctan(%s)", c.r.asConstruction())
+}
 
 type prescaledCosine struct {
 	precisionTracker
