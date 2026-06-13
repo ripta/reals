@@ -164,12 +164,15 @@ func TestPreciseCmp(t *testing.T) {
 	assertEqualAtPrecision(t, Zero(), Tangent(Pi()), -100)
 	assertEqualAtPrecision(t, Zero(), Tangent(Multiply(FromInt(2), Pi())), -100)
 
-	// TODO(ripta): never terminates
-	// atan(0) = 0, atan(1) = π/4, atan(√3) = π/3, atan(∞) = π/2
-	// assertEqualAtPrecision(t, FromInt(0), Arctangent(FromInt(0)), -100)
-	// assertEqualAtPrecision(t, Divide(Pi(), FromInt(4)), Arctangent(FromInt(1)), -100)
-	// assertEqualAtPrecision(t, Divide(Pi(), FromInt(3)), Arctangent(Sqrt(FromInt(3))), -100)
-	// assertEqualAtPrecision(t, Divide(Pi(), FromInt(2)), Arctangent(FromInt(1<<1000)), -100)
+	// atan(0) = 0, atan(1) = π/4, atan(-1) = -π/4, atan(√3) = π/3,
+	// atan(1/√3) = π/6, atan(2^1000) ≈ π/2, and tan(atan(x)) = x round-trip
+	assertEqualAtPrecision(t, FromInt(0), Arctangent(FromInt(0)), -100)
+	assertEqualAtPrecision(t, Divide(Pi(), FromInt(4)), Arctangent(FromInt(1)), -100)
+	assertEqualAtPrecision(t, Negate(Divide(Pi(), FromInt(4))), Arctangent(FromInt(-1)), -100)
+	assertEqualAtPrecision(t, Divide(Pi(), FromInt(3)), Arctangent(Sqrt(FromInt(3))), -100)
+	assertEqualAtPrecision(t, Divide(Pi(), FromInt(6)), Arctangent(Inverse(Sqrt(FromInt(3)))), -100)
+	assertEqualAtPrecision(t, ShiftRight(Pi(), 1), Arctangent(ShiftLeft(FromInt(1), 1000)), -100)
+	assertEqualAtPrecision(t, FromRat(7, 13), Tangent(Arctangent(FromRat(7, 13))), -100)
 
 	// 47/17 = [2; 1, 3, 4]
 	assertEqualAtPrecision(t, Divide(FromInt(47), FromInt(17)), ContinuedFraction64([]int64{2, 1, 3, 4}), -100)
@@ -517,5 +520,82 @@ func TestGeneratePrimes(t *testing.T) {
 				t.Errorf("%d is not prime (divisible by %d)", p, i)
 			}
 		}
+	}
+}
+
+type roundingTest struct {
+	name     string
+	input    Real
+	expected int64
+}
+
+var floorTests = []roundingTest{
+	{"Floor(2.4)=2", FromRat(12, 5), 2},
+	{"Floor(2.6)=2", FromRat(13, 5), 2},
+	{"Floor(-2.4)=-3", FromRat(-12, 5), -3},
+	{"Floor(-2.6)=-3", FromRat(-13, 5), -3},
+	{"Floor(3)=3", FromInt64(3), 3},
+	{"Floor(0)=0", FromInt64(0), 0},
+	{"Floor(sqrt(4))=2", Sqrt(FromInt64(4)), 2},
+}
+
+func TestFloor(t *testing.T) {
+	for _, test := range floorTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), Floor(test.input, -50), -50)
+		})
+	}
+}
+
+var ceilTests = []roundingTest{
+	{"Ceil(2.4)=3", FromRat(12, 5), 3},
+	{"Ceil(2.6)=3", FromRat(13, 5), 3},
+	{"Ceil(-2.4)=-2", FromRat(-12, 5), -2},
+	{"Ceil(3)=3", FromInt64(3), 3},
+	{"Ceil(0)=0", FromInt64(0), 0},
+	{"Ceil(sqrt(4))=2", Sqrt(FromInt64(4)), 2},
+}
+
+func TestCeil(t *testing.T) {
+	for _, test := range ceilTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), Ceil(test.input, -50), -50)
+		})
+	}
+}
+
+var roundTests = []roundingTest{
+	{"Round(2.4)=2", FromRat(12, 5), 2},
+	{"Round(2.6)=3", FromRat(13, 5), 3},
+	{"Round(-2.6)=-3", FromRat(-13, 5), -3},
+	{"Round(2.5)=3", FromRat(5, 2), 3},
+	{"Round(-2.5)=-3", FromRat(-5, 2), -3},
+	{"Round(0.5)=1", FromRat(1, 2), 1},
+	{"Round(-0.5)=-1", FromRat(-1, 2), -1},
+	{"Round(0)=0", FromInt64(0), 0},
+}
+
+func TestRound(t *testing.T) {
+	for _, test := range roundTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), Round(test.input, -50), -50)
+		})
+	}
+}
+
+var roundToEvenTests = []roundingTest{
+	{"RoundToEven(2.4)=2", FromRat(12, 5), 2},
+	{"RoundToEven(2.5)=2", FromRat(5, 2), 2},
+	{"RoundToEven(3.5)=4", FromRat(7, 2), 4},
+	{"RoundToEven(-2.5)=-2", FromRat(-5, 2), -2},
+	{"RoundToEven(-3.5)=-4", FromRat(-7, 2), -4},
+	{"RoundToEven(0.5)=0", FromRat(1, 2), 0},
+}
+
+func TestRoundToEven(t *testing.T) {
+	for _, test := range roundToEvenTests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, FromInt64(test.expected), RoundToEven(test.input, -50), -50)
+		})
 	}
 }

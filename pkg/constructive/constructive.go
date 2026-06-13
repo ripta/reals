@@ -589,6 +589,77 @@ func Min(a, b Real) Real {
 	return newCondsign(Subtract(a, b), a, b)
 }
 
+// floorInt computes the greatest integer less than or equal to c at precision p.
+// The nearest integer n to c lies within half a unit, so the floor is n when
+// c >= n and n-1 otherwise; the boundary is decided with PreciseSign rather than
+// the non-terminating Sign.
+func floorInt(c Real, p int) *big.Int {
+	n := scale(Approximate(c, p), p)
+	if PreciseSign(Subtract(c, FromBigInt(n)), p) < 0 {
+		return bigSub(n, big.NewInt(1))
+	}
+
+	return n
+}
+
+// roundParts returns the floor f of c and the sign of 2*(c-f) - 1, the
+// fractional part compared against one half, both at precision p.
+func roundParts(c Real, p int) (*big.Int, int) {
+	f := floorInt(c, p)
+	frac := Subtract(c, FromBigInt(f))
+
+	return f, PreciseCmp(ShiftLeft(frac, 1), One(), p)
+}
+
+// Floor computes the greatest integer less than or equal to c, deciding the
+// integer boundary at precision p. A value indistinguishable from an integer at
+// p snaps to that integer; an exact rational is decided exactly regardless of p.
+func Floor(c Real, p int) Real {
+	return FromBigInt(floorInt(c, p))
+}
+
+// Ceil computes the least integer greater than or equal to c, deciding the
+// integer boundary at precision p.
+func Ceil(c Real, p int) Real {
+	return FromBigInt(bigNeg(floorInt(Negate(c), p)))
+}
+
+// Round computes the nearest integer to c, rounding half away from zero, deciding
+// the integer boundary at precision p. An exact halfway tie is not finitely
+// decidable, so a value indistinguishable from a half-integer at p is treated as
+// a tie.
+func Round(c Real, p int) Real {
+	f, half := roundParts(c, p)
+	switch {
+	case half < 0:
+		return FromBigInt(f)
+	case half > 0:
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	default:
+		if PreciseSign(c, p) < 0 {
+			return FromBigInt(f)
+		}
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	}
+}
+
+// RoundToEven computes the nearest integer to c, rounding ties to even, deciding
+// the integer boundary at precision p.
+func RoundToEven(c Real, p int) Real {
+	f, half := roundParts(c, p)
+	switch {
+	case half < 0:
+		return FromBigInt(f)
+	case half > 0:
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	default:
+		if f.Bit(0) == 0 {
+			return FromBigInt(f)
+		}
+		return FromBigInt(bigAdd(f, big.NewInt(1)))
+	}
+}
+
 type constructiveCondsign struct {
 	precisionTracker
 	a Real
@@ -876,12 +947,82 @@ func Tangent(c Real) Real {
 	return Divide(Sine(c), Cosine(c))
 }
 
-// Arctangent computes the arctangent of c, using the integral formula.
+// Arctangent computes the arctangent of c, returning radians.
 //
-// TODO(ripta): never terminates
-// func Arctangent(c Real) Real {
-//	return newIntegralArctan(Inverse(c))
-// }
+// The Maclaurin series converges only for |x| < 1 and grinds to a halt as
+// |x| approaches 1, so the argument is first reduced into the kernel's fast
+// region. Odd symmetry strips the sign, the reciprocal identity
+// `atan(x) = π/2 - atan(1/x)` folds large arguments toward zero, and two
+// half-angle reductions pull the result below 1/4 before the series runs.
+func Arctangent(c Real) Real {
+	rough := Approximate(c, -3)
+	if rough.Sign() < 0 {
+		return Negate(Arctangent(Negate(c)))
+	}
+	if rough.Cmp(big.NewInt(8)) >= 0 {
+		return Subtract(ShiftRight(Pi(), 1), arctanReduced(Inverse(c)))
+	}
+	return arctanReduced(c)
+}
+
+// arctanReduced applies the half-angle reduction `atan(x) = 2·atan(x / (1 +
+// √(1 + x²)))` twice, driving 0 ≤ x ≲ 1 below 1/4, then runs the series. The
+// two doublings are undone by the left shift of 2.
+func arctanReduced(c Real) Real {
+	for i := 0; i < 2; i++ {
+		c = Divide(c, Add(One(), Sqrt(Add(One(), Square(c)))))
+	}
+	return ShiftLeft(newPrescaledArctan(c), 2)
+}
+
+type prescaledArctan struct {
+	precisionTracker
+	r Real
+}
+
+// newPrescaledArctan computes the arctangent using the Maclaurin series
+// expansion:
+//
+// arctan(x) = x - x^3/3 + x^5/5 - x^7/7 + ...
+//
+// for |x| < 1/4.
+func newPrescaledArctan(c Real) Real {
+	return &prescaledArctan{
+		r: c,
+	}
+}
+
+func (c *prescaledArctan) approximate(p int) *big.Int {
+	if p >= 1 {
+		return big.NewInt(0)
+	}
+
+	iters := -p/2 + 2
+	calcPrec := p - boundLog2(2*iters) - 4
+	opPrec := p - 3
+	opAppr := Approximate(c.r, opPrec)
+
+	xToTheN := scale(opAppr, opPrec-calcPrec)
+	term := xToTheN
+	sum := term
+	n := int64(1)
+	sign := int64(1)
+	maxTruncError := bigLsh(big.NewInt(1), uint(p-4-calcPrec))
+	for bigAbs(term).Cmp(maxTruncError) >= 0 {
+		n += 2
+		sign = -sign
+
+		xToTheN = scale(bigMul(xToTheN, opAppr), opPrec)
+		xToTheN = scale(bigMul(xToTheN, opAppr), opPrec)
+		term = bigDiv(xToTheN, big.NewInt(sign*n))
+		sum = bigAdd(sum, term)
+	}
+	return scale(sum, calcPrec-p)
+}
+
+func (c *prescaledArctan) asConstruction() string {
+	return fmt.Sprintf("Arctan(%s)", c.r.asConstruction())
+}
 
 type prescaledCosine struct {
 	precisionTracker

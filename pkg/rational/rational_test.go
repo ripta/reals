@@ -47,6 +47,37 @@ func assertEqualAtPrecision(t *testing.T, a, b constructive.Real, precision int)
 	}
 }
 
+func TestFloor(t *testing.T) {
+	assertRationalEqual(t, New64(3, 1), New64(3, 1).Floor())
+	assertRationalEqual(t, New64(2, 1), New64(5, 2).Floor())
+	assertRationalEqual(t, New64(-3, 1), New64(-5, 2).Floor())
+	assertRationalEqual(t, New64(2, 1), New64(7, 3).Floor())
+	assertRationalEqual(t, New64(-3, 1), New64(-7, 3).Floor())
+}
+
+func TestCeil(t *testing.T) {
+	assertRationalEqual(t, New64(3, 1), New64(3, 1).Ceil())
+	assertRationalEqual(t, New64(3, 1), New64(5, 2).Ceil())
+	assertRationalEqual(t, New64(-2, 1), New64(-5, 2).Ceil())
+	assertRationalEqual(t, New64(3, 1), New64(7, 3).Ceil())
+	assertRationalEqual(t, New64(-2, 1), New64(-7, 3).Ceil())
+}
+
+func TestRound(t *testing.T) {
+	assertRationalEqual(t, New64(3, 1), New64(5, 2).Round())
+	assertRationalEqual(t, New64(-3, 1), New64(-5, 2).Round())
+	assertRationalEqual(t, New64(2, 1), New64(7, 3).Round())
+	assertRationalEqual(t, New64(3, 1), New64(8, 3).Round())
+	assertRationalEqual(t, New64(4, 1), New64(4, 1).Round())
+}
+
+func TestRoundToEven(t *testing.T) {
+	assertRationalEqual(t, New64(2, 1), New64(5, 2).RoundToEven())
+	assertRationalEqual(t, New64(4, 1), New64(7, 2).RoundToEven())
+	assertRationalEqual(t, New64(-2, 1), New64(-5, 2).RoundToEven())
+	assertRationalEqual(t, New64(2, 1), New64(7, 3).RoundToEven())
+}
+
 func TestShift(t *testing.T) {
 	// Shifting left positive
 	assertRationalEqual(t, New64(12, 4), New64(3, 4).ShiftLeft(2)) // 3/4 * 4 = 12/4

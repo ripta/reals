@@ -124,9 +124,75 @@ func (r *Number) IsZero() bool {
 	return r.r.Sign() == 0
 }
 
+// IsInteger returns whether the rational number is an integer.
+func (r *Number) IsInteger() bool {
+	return r.r.IsInt()
+}
+
 // Cmp compares two rational numbers: -1 if r < other, 0 if r == other, 1 if r > other.
 func (r *Number) Cmp(other *Number) int {
 	return r.r.Cmp(other.r)
+}
+
+// floorRem returns the floor of r and the remainder num - floor*den, where den
+// is the positive denominator. The remainder satisfies 0 <= rem < den.
+func (r *Number) floorRem() (f, rem, den *big.Int) {
+	num, den := r.r.Num(), r.r.Denom()
+	f = new(big.Int).Div(num, den)
+	rem = new(big.Int).Sub(num, new(big.Int).Mul(f, den))
+	return f, rem, den
+}
+
+// fromInt builds an integer-valued rational from a big.Int.
+func fromInt(i *big.Int) *Number {
+	return &Number{r: new(big.Rat).SetInt(i)}
+}
+
+// Floor returns the greatest integer less than or equal to r.
+func (r *Number) Floor() *Number {
+	f, _, _ := r.floorRem()
+	return fromInt(f)
+}
+
+// Ceil returns the least integer greater than or equal to r.
+func (r *Number) Ceil() *Number {
+	f, rem, _ := r.floorRem()
+	if rem.Sign() != 0 {
+		f = new(big.Int).Add(f, big.NewInt(1))
+	}
+	return fromInt(f)
+}
+
+// Round returns the nearest integer to r, rounding half away from zero.
+func (r *Number) Round() *Number {
+	f, rem, den := r.floorRem()
+	switch new(big.Int).Lsh(rem, 1).Cmp(den) {
+	case -1:
+		return fromInt(f)
+	case 1:
+		return fromInt(new(big.Int).Add(f, big.NewInt(1)))
+	default:
+		if r.r.Sign() < 0 {
+			return fromInt(f)
+		}
+		return fromInt(new(big.Int).Add(f, big.NewInt(1)))
+	}
+}
+
+// RoundToEven returns the nearest integer to r, rounding ties to even.
+func (r *Number) RoundToEven() *Number {
+	f, rem, den := r.floorRem()
+	switch new(big.Int).Lsh(rem, 1).Cmp(den) {
+	case -1:
+		return fromInt(f)
+	case 1:
+		return fromInt(new(big.Int).Add(f, big.NewInt(1)))
+	default:
+		if f.Bit(0) == 0 {
+			return fromInt(f)
+		}
+		return fromInt(new(big.Int).Add(f, big.NewInt(1)))
+	}
 }
 
 // String returns the string representation of the rational number. If the
