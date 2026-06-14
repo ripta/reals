@@ -413,3 +413,49 @@ func TestAtan2(t *testing.T) {
 		})
 	}
 }
+
+// sqrtPi is √π, the value of Γ(1/2).
+func sqrtPi() *Real {
+	r, _ := Pi().Sqrt()
+	return r
+}
+
+var gammaTests = []partialUnaryTest{
+	{name: "Gamma(1)=1", input: One(), expected: One()},
+	{name: "Gamma(4)=6", input: rat(4, 1), expected: rat(6, 1)},
+	{name: "Gamma(1/2)=sqrt(pi)", input: Half(), expected: sqrtPi()},
+	{name: "Gamma(-1/2)=-2sqrt(pi)", input: rat(-1, 2), expected: sqrtPi().ShiftLeft(1).Negate()},
+	{name: "Gamma(0)", input: Zero(), wantErr: ErrGammaPole},
+	{name: "Gamma(-1)", input: NegativeOne(), wantErr: ErrGammaPole},
+	{name: "Gamma(-2)", input: rat(-2, 1), wantErr: ErrGammaPole},
+}
+
+func TestGamma(t *testing.T) {
+	for _, test := range gammaTests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Gamma()
+			if test.wantErr != nil {
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, test.wantErr)
+				return
+			}
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, result, -60)
+			assertEqualAtPrecision(t, test.expected, result, -120)
+		})
+	}
+}
+
+// TestGammaNearPoleIrrational confirms the structural pole check does not misfire
+// on an irrational argument near the pole at zero: √2/100 ≈ 0.0141 is finite and
+// Γ there is a large positive value, not an error.
+func TestGammaNearPoleIrrational(t *testing.T) {
+	x := New(constructive.Sqrt2(), rational.New64(1, 100))
+	result, err := x.Gamma()
+	assert.NoError(t, err)
+
+	c := result.Constructive()
+	if constructive.PreciseCmp(c, One().Constructive(), -60) <= 0 {
+		t.Errorf("expected Gamma(√2/100) to exceed 1, got %s", constructive.Text(c, 6, 10))
+	}
+}

@@ -498,8 +498,8 @@ func (c *constructiveMultiplicativeInverse) approximate(p int) *big.Int {
 	absolute := bigAbs(divisor)
 	adj := bigAdd(dividend, bigRsh(absolute, 1))
 
-	res := bigDiv(adj, divisor)
-	if res.Sign() < 0 {
+	res := bigDiv(adj, absolute)
+	if divisor.Sign() < 0 {
 		return bigNeg(res)
 	}
 	return res

@@ -30,6 +30,10 @@ var ErrOutsideUnitInterval = errors.New("argument must be in [-1, 1]")
 // zero, where the angle is undefined.
 var ErrUndefinedAtOrigin = errors.New("atan2 is undefined at the origin")
 
+// ErrGammaPole indicates that gamma was called at one of its poles, the
+// non-positive integers, where the function is undefined.
+var ErrGammaPole = errors.New("argument must not be a non-positive integer")
+
 // halfPi is π/2, computed once and reused by the inverse-trig endpoints.
 var halfPi = sync.OnceValue(func() *Real {
 	return Pi().ShiftRight(1)
@@ -87,6 +91,18 @@ func (u *Real) Sqrt() (*Real, error) {
 		return nil, fmt.Errorf("Sqrt: %w", ErrNegative)
 	}
 	return New(constructive.Sqrt(c), rational.One()), nil
+}
+
+// Gamma returns the gamma function Γ(u). It is undefined at the non-positive
+// integers, its poles, and returns ErrGammaPole there. Detection is structural:
+// it recognizes only an exact non-positive integer on the rational
+// representation, since constructive reals cannot decide equality in general. A
+// near-pole irrational argument is finite and computes to a large value.
+func (u *Real) Gamma() (*Real, error) {
+	if u.cr == constructive.One() && u.rr.IsInteger() && u.rr.Sign() <= 0 {
+		return nil, fmt.Errorf("Gamma: %w", ErrGammaPole)
+	}
+	return New(constructive.Gamma(u.Constructive()), rational.One()), nil
 }
 
 // Pow returns u raised to the power n.
