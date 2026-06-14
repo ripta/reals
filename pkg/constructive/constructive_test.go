@@ -603,3 +603,115 @@ func TestRoundToEven(t *testing.T) {
 		})
 	}
 }
+
+// realEqualTest asserts that a computed Real equals an expected Real at a fixed
+// precision. These tables target the sign, parity, and zero edge cases that the
+// multiplicative-inverse bug (73a6dd0) slipped through, where every prior test
+// fed positive, happy-path inputs.
+type realEqualTest struct {
+	name string
+	got  Real
+	want Real
+}
+
+func runRealEqualTests(t *testing.T, tests []realEqualTest, precision int) {
+	t.Helper()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assertEqualAtPrecision(t, test.want, test.got, precision)
+		})
+	}
+}
+
+// Min and Max route through constructiveCondsign, whose discriminant is the sign
+// of a - b; that is the same shape as the inverse bug. The float64-vs-π pairs
+// differ only near 2^-52, so the rough sign at precision -20 is indeterminate
+// and condsign must resolve its deeper branch.
+var minMaxTests = []realEqualTest{
+	{"Max(3,5)=5", Max(FromInt(3), FromInt(5)), FromInt(5)},
+	{"Max(5,3)=5", Max(FromInt(5), FromInt(3)), FromInt(5)},
+	{"Max(-3,-5)=-3", Max(FromInt(-3), FromInt(-5)), FromInt(-3)},
+	{"Max(-5,-3)=-3", Max(FromInt(-5), FromInt(-3)), FromInt(-3)},
+	{"Max(-2,3)=3", Max(FromInt(-2), FromInt(3)), FromInt(3)},
+	{"Max(7,7)=7", Max(FromInt(7), FromInt(7)), FromInt(7)},
+	{"Max(π,3)=π", Max(Pi(), FromInt(3)), Pi()},
+	{"Max(π,float)=π", Max(Pi(), FromFloat64(math.Pi)), Pi()},
+	{"Min(3,5)=3", Min(FromInt(3), FromInt(5)), FromInt(3)},
+	{"Min(5,3)=3", Min(FromInt(5), FromInt(3)), FromInt(3)},
+	{"Min(-3,-5)=-5", Min(FromInt(-3), FromInt(-5)), FromInt(-5)},
+	{"Min(-2,3)=-2", Min(FromInt(-2), FromInt(3)), FromInt(-2)},
+	{"Min(7,7)=7", Min(FromInt(7), FromInt(7)), FromInt(7)},
+	{"Min(π,4)=π", Min(Pi(), FromInt(4)), Pi()},
+	{"Min(π,float)=float", Min(Pi(), FromFloat64(math.Pi)), FromFloat64(math.Pi)},
+}
+
+func TestMinMax(t *testing.T) {
+	runRealEqualTests(t, minMaxTests, -100)
+}
+
+// Abs is condsign with discriminant c and branches -c and c. The tiny cases pin
+// the near-zero discriminant path: a small negative folds to its positive twin.
+var absTests = []realEqualTest{
+	{"Abs(5)=5", Abs(FromInt(5)), FromInt(5)},
+	{"Abs(-5)=5", Abs(FromInt(-5)), FromInt(5)},
+	{"Abs(0)=0", Abs(FromInt(0)), FromInt(0)},
+	{"Abs(-π)=π", Abs(Negate(Pi())), Pi()},
+	{"Abs(float-π)=π-float", Abs(Subtract(FromFloat64(math.Pi), Pi())), Subtract(Pi(), FromFloat64(math.Pi))},
+}
+
+func TestAbs(t *testing.T) {
+	runRealEqualTests(t, absTests, -100)
+}
+
+// The inverse fix corrected sign handling no positive-only test reached; these
+// lock the full sign matrix and the inverse/divide round-trips.
+var inverseDivideTests = []realEqualTest{
+	{"1/-4=-1/4", Inverse(FromInt(-4)), FromRat(-1, 4)},
+	{"1/(1/7)=7", Inverse(Inverse(FromInt(7))), FromInt(7)},
+	{"1/(1/-9)=-9", Inverse(Inverse(FromInt(-9))), FromInt(-9)},
+	{"1/√2=√2/2", Inverse(Sqrt2()), Divide(Sqrt2(), FromInt(2))},
+	{"-6/-2=3", Divide(FromInt(-6), FromInt(-2)), FromInt(3)},
+	{"6/-2=-3", Divide(FromInt(6), FromInt(-2)), FromInt(-3)},
+	{"-6/2=-3", Divide(FromInt(-6), FromInt(2)), FromInt(-3)},
+	{"1/-8=-1/8", Divide(FromInt(1), FromInt(-8)), FromRat(-1, 8)},
+}
+
+func TestInverseDivide(t *testing.T) {
+	runRealEqualTests(t, inverseDivideTests, -100)
+}
+
+// Multiply has dedicated branches for an operand indistinguishable from zero on
+// either side; the sign-crossed products guard against a sign slip in the
+// big.Int product.
+var multiplyTests = []realEqualTest{
+	{"-3*5=-15", Multiply(FromInt(-3), FromInt(5)), FromInt(-15)},
+	{"3*-5=-15", Multiply(FromInt(3), FromInt(-5)), FromInt(-15)},
+	{"-3*-5=15", Multiply(FromInt(-3), FromInt(-5)), FromInt(15)},
+	{"0*π=0", Multiply(FromInt(0), Pi()), FromInt(0)},
+	{"π*0=0", Multiply(Pi(), FromInt(0)), FromInt(0)},
+	{"(-π)²=π²", Square(Negate(Pi())), Square(Pi())},
+	{"√7²=7", Square(Sqrt(FromInt(7))), FromInt(7)},
+}
+
+func TestMultiply(t *testing.T) {
+	runRealEqualTests(t, multiplyTests, -100)
+}
+
+// Cosine reduces a large argument modulo 6 and flips sign by the parity of the
+// quotient; Sine derives from it. These cover the parity branch and the even/odd
+// symmetries that the small positive-angle tests never reach.
+var trigReductionTests = []realEqualTest{
+	{"cos(-π/3)=1/2", Cosine(Negate(Divide(Pi(), FromInt(3)))), FromRat(1, 2)},
+	{"cos(-100)=cos(100)", Cosine(FromInt(-100)), Cosine(FromInt(100))},
+	{"cos(3π)=-1", Cosine(Multiply(FromInt(3), Pi())), FromInt(-1)},
+	{"cos(4π)=1", Cosine(Multiply(FromInt(4), Pi())), FromInt(1)},
+	{"cos(7π)=-1", Cosine(Multiply(FromInt(7), Pi())), FromInt(-1)},
+	{"cos(10π)=1", Cosine(Multiply(FromInt(10), Pi())), FromInt(1)},
+	{"sin(-1)=-sin(1)", Sine(FromInt(-1)), Negate(Sine(FromInt(1)))},
+	{"sin(-π/2)=-1", Sine(Negate(Divide(Pi(), FromInt(2)))), FromInt(-1)},
+	{"sin(1+2π)=sin(1)", Sine(Add(FromInt(1), Multiply(FromInt(2), Pi()))), Sine(FromInt(1))},
+}
+
+func TestTrigReduction(t *testing.T) {
+	runRealEqualTests(t, trigReductionTests, -100)
+}
