@@ -125,6 +125,10 @@ func TestPreciseCmp(t *testing.T) {
 	assertEqualAtPrecision(t, FromInt(1024), ShiftLeft(FromInt(1), 10), -100)
 	assertEqualAtPrecision(t, Inverse(FromInt(1024)), ShiftRight(FromInt(1), 10), -100)
 
+	// the inverse of a negative number is negative
+	assertEqualAtPrecision(t, Inverse(FromInt(-4)), FromRat(-1, 4), -100)
+	assertEqualAtPrecision(t, Divide(FromInt(1), FromInt(-8)), FromRat(-1, 8), -100)
+
 	// 1/φ = φ - 1
 	phi := Phi()
 	assertEqualAtPrecision(t, Inverse(phi), Subtract(phi, FromInt(1)), -100)
