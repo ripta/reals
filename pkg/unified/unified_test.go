@@ -396,6 +396,28 @@ func TestDivide(t *testing.T) {
 			assertEqualAtPrecision(t, test.expected, result, -100)
 		})
 	}
+
+	t.Run("pure rationals stay rational: cr == One()", func(t *testing.T) {
+		a := New(constructive.One(), rational.New64(3, 1))
+		b := New(constructive.One(), rational.New64(4, 1))
+		result := a.Divide(b)
+		if result.cr != constructive.One() {
+			t.Errorf("expected cr == constructive.One() after dividing pure rationals, got %v", result.cr)
+		}
+	})
+
+	// A quotient just below an integer floors exactly on the rational path. The
+	// constructive path decides the boundary at precision p. At coarse p it cannot
+	// distinguish the quotient from the integer above and floors the wrong way.
+	t.Run("exact floor of quotient just below an integer", func(t *testing.T) {
+		const k = 40
+		num := int64(1)<<k - 1
+		den := int64(1) << k
+		a := New(constructive.One(), rational.New64(num, 1))
+		b := New(constructive.One(), rational.New64(den, 1))
+		result := a.Divide(b).Floor(-4)
+		assertEqualAtPrecision(t, Zero(), result, -100)
+	})
 }
 
 type shiftLeftTest struct {
@@ -591,6 +613,13 @@ func TestInverse(t *testing.T) {
 		x := New(constructive.E(), rational.New64(3, 7))
 		invInvX := x.Inverse().Inverse()
 		assertEqualAtPrecision(t, x, invInvX, -100)
+	})
+
+	t.Run("pure rational stays rational: cr == One()", func(t *testing.T) {
+		result := New(constructive.One(), rational.New64(1, 4)).Inverse()
+		if result.cr != constructive.One() {
+			t.Errorf("expected cr == constructive.One() after inverting a pure rational, got %v", result.cr)
+		}
 	})
 }
 
