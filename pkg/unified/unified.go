@@ -100,6 +100,9 @@ func (u *Real) Negate() *Real {
 // Inverse returns the multiplicative inverse of the current number as a new
 // Real number.
 func (u *Real) Inverse() *Real {
+	if u.cr == constructive.One() {
+		return New(constructive.One(), u.rr.Inverse())
+	}
 	return New(constructive.Inverse(u.cr), u.rr.Inverse())
 }
 
