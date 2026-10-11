@@ -550,27 +550,35 @@ func newMultiplication(a, b Real) Real {
 }
 
 func (c *constructiveMultiplication) approximate(ctx context.Context, p int) (*big.Int, error) {
+	a, b := c.a, c.b
+
 	hp := (p >> 1) - 1
-	ma, err := msd(ctx, c.a, hp)
+	ma, err := msd(ctx, a, hp)
 	if err != nil {
 		return nil, err
 	}
 
+	// The operand with a known msd goes first, so the swap moves the operands and
+	// not only their msds. The second operand is approximated relative to the first.
+	// When it rounds to zero, so does the product, and the first is never refined.
+	//
+	// Otherwise the first is approximated relative to the second. A tiny second
+	// operand then keeps the first one coarse.
 	if ma == math.MinInt {
-		mb, err := msd(ctx, c.b, hp)
+		ma, err = msd(ctx, b, hp)
 		if err != nil {
 			return nil, err
 		}
 
-		if mb == math.MinInt {
+		if ma == math.MinInt {
 			return big.NewInt(0), nil
 		}
 
-		ma, mb = mb, ma
+		a, b = b, a
 	}
 
 	p2 := p - ma - 3
-	ib, err := approx(ctx, c.b, p2)
+	ib, err := approx(ctx, b, p2)
 	if err != nil {
 		return nil, err
 	}
@@ -579,13 +587,13 @@ func (c *constructiveMultiplication) approximate(ctx context.Context, p int) (*b
 		return big.NewInt(0), nil
 	}
 
-	mb, err := knownMSD(c.b)
+	mb, err := knownMSD(b)
 	if err != nil {
 		return nil, err
 	}
 
 	p1 := p - mb - 3
-	ia, err := approx(ctx, c.a, p1)
+	ia, err := approx(ctx, a, p1)
 	if err != nil {
 		return nil, err
 	}
