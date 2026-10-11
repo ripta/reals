@@ -456,6 +456,6 @@ func TestGammaNearPoleIrrational(t *testing.T) {
 
 	c := result.Constructive()
 	if constructive.PreciseCmp(c, One().Constructive(), -60) <= 0 {
-		t.Errorf("expected Gamma(√2/100) to exceed 1, got %s", constructive.Text(c, 6, 10))
+		t.Errorf("expected Gamma(√2/100) to exceed 1, got %s", mustText(t, c, 6, 10))
 	}
 }

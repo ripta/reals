@@ -47,9 +47,9 @@ func assertEqualAtPrecision(t *testing.T, expected, actual *Real, precision int)
 	if result := constructive.PreciseCmp(a, b, precision); result != 0 {
 		t.Errorf("expected [1] to be equal to [2] at precision %d\n[1]: %s\n     %#v\n[2]: %s\n     %#v",
 			precision,
-			constructive.Text(a, -precision, 10),
+			mustText(t, a, -precision, 10),
 			a,
-			constructive.Text(b, -precision, 10),
+			mustText(t, b, -precision, 10),
 			b)
 	}
 }
@@ -109,8 +109,8 @@ func TestConstructive(t *testing.T) {
 			actual := test.input.Constructive()
 			if result := constructive.PreciseCmp(test.expected, actual, -100); result != 0 {
 				t.Errorf("expected %s, got %s",
-					constructive.Text(test.expected, 100, 10),
-					constructive.Text(actual, 100, 10))
+					mustText(t, test.expected, 100, 10),
+					mustText(t, actual, 100, 10))
 			}
 		})
 	}

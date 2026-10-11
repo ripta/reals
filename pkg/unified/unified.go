@@ -1,6 +1,7 @@
 package unified
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ripta/reals/pkg/constructive"
@@ -117,7 +118,12 @@ func (u *Real) IsZero() bool {
 // FormattedString returns a string representation of the unified real number
 // with the specified number of decimal digits and radix.
 func (u *Real) FormattedString(decimalDigits, radix int) string {
-	return constructive.Text(u.Constructive(), decimalDigits, radix)
+	text, err := constructive.Text(context.Background(), u.Constructive(), decimalDigits, radix)
+	if err != nil {
+		return fmt.Sprintf("<undefined: %v>", err)
+	}
+
+	return text
 }
 
 var _ fmt.Formatter = (*Real)(nil)

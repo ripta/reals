@@ -1,6 +1,7 @@
 package constructive
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/big"
@@ -22,7 +23,11 @@ var log2TwoPi = math.Log2(2 * math.Pi)
 // such an argument drives a non-terminating refinement; callers reject exact
 // poles upstream.
 func Gamma(c Real) Real {
-	rough := Approximate(c, -2)
+	rough := roughApproximation(c, -2)
+	if rough == nil {
+		return nil
+	}
+
 	if rough.Cmp(big.NewInt(2)) < 0 {
 		// x < 1/2: reflect into the convergent region Γ(1−x).
 		reflected := Multiply(Sine(Multiply(Pi(), c)), Gamma(Subtract(One(), c)))
@@ -52,12 +57,21 @@ func newSpougeGamma(c Real) Real {
 //
 // The integer parameter N doubles as Spouge's free parameter a, chosen per call
 // so the relative truncation error (2π)^−N drops below the requested precision.
-func (c *spougeGamma) approximate(p int) *big.Int {
-	n := c.spougeParameter(p)
+func (c *spougeGamma) approximate(ctx context.Context, p int) (*big.Int, error) {
+	n, err := c.spougeParameter(ctx, p)
+	if err != nil {
+		return nil, err
+	}
 
 	sum := Sqrt(Multiply(Two(), Pi())) // c_0 = √(2π)
 	factorial := big.NewInt(1)         // (k−1)! carried across iterations
 	for k := 1; k < n; k++ {
+		// Building each term runs the eager Pow and Exp constructors, which do real
+		// work before any approximation reaches the context check.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		if k > 1 {
 			factorial = bigMul(factorial, big.NewInt(int64(k-1)))
 		}
@@ -84,7 +98,12 @@ func (c *spougeGamma) approximate(p int) *big.Int {
 	// alternating-sign cancellation in S needs no special handling; a handful of
 	// guard bits covers rounding in the final product.
 	const guard = 4
-	return scale(Approximate(result, p-guard), -guard)
+	ir, err := approx(ctx, result, p-guard)
+	if err != nil {
+		return nil, err
+	}
+
+	return scale(ir, -guard), nil
 }
 
 // spougeParameter sizes Spouge's free parameter for precision p. Spouge's
@@ -92,15 +111,20 @@ func (c *spougeGamma) approximate(p int) *big.Int {
 // N > (log2|Γ(x)| − p) / log2(2π). The magnitude term is estimated cheaply in
 // floating point, in the spirit of Sqrt seeding itself with math.Sqrt;
 // overestimating only enlarges N and sharpens the result.
-func (c *spougeGamma) spougeParameter(p int) int {
-	lg, _ := math.Lgamma(floatEstimate(c.r))
+func (c *spougeGamma) spougeParameter(ctx context.Context, p int) (int, error) {
+	est, err := floatEstimate(ctx, c.r)
+	if err != nil {
+		return 0, err
+	}
+
+	lg, _ := math.Lgamma(est)
 	mag := lg/math.Ln2 + 4
 
 	n := int(math.Ceil((mag-float64(p)+1)/log2TwoPi)) + 5
 	if n < 10 {
 		n = 10
 	}
-	return n
+	return n, nil
 }
 
 func (c *spougeGamma) asConstruction() string {
@@ -109,8 +133,13 @@ func (c *spougeGamma) asConstruction() string {
 
 // floatEstimate returns a float64 approximation of c, used only to seed
 // precision heuristics.
-func floatEstimate(c Real) float64 {
+func floatEstimate(ctx context.Context, c Real) (float64, error) {
 	const fp = -60
-	v, _ := Approximate(c, fp).Float64()
-	return math.Ldexp(v, fp)
+	i, err := approx(ctx, c, fp)
+	if err != nil {
+		return 0, err
+	}
+
+	v, _ := i.Float64()
+	return math.Ldexp(v, fp), nil
 }
