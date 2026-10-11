@@ -42,7 +42,7 @@ func TestNumber_Constructive(t *testing.T) {
 
 func assertEqualAtPrecision(t *testing.T, a, b constructive.Real, precision int) {
 	t.Helper()
-	if result := constructive.PreciseCmp(a, b, precision); result != 0 {
+	if result := mustPreciseCmp(t, a, b, precision); result != 0 {
 		t.Errorf("expected [1] to be equal to [2] at precision %d\n[1]: %s\n     %#v\n[2]: %s\n     %#v", precision, mustText(t, a, -precision, 10), a, mustText(t, b, -precision, 10), b)
 	}
 }

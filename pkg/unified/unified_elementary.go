@@ -1,6 +1,7 @@
 package unified
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -74,7 +75,11 @@ func (u *Real) Abs() *Real {
 // returns ErrNonPositive otherwise.
 func (u *Real) Ln() (*Real, error) {
 	c := u.Constructive()
-	if u.IsZero() || constructive.Sign(c) < 0 {
+	neg, err := u.nonPositive(c)
+	if err != nil {
+		return nil, fmt.Errorf("Ln: %w", err)
+	}
+	if neg {
 		return nil, fmt.Errorf("Ln: %w", ErrNonPositive)
 	}
 	return New(constructive.Ln(c), rational.One()), nil
@@ -87,7 +92,11 @@ func (u *Real) Sqrt() (*Real, error) {
 		return Zero(), nil
 	}
 	c := u.Constructive()
-	if constructive.Sign(c) < 0 {
+	sg, err := constructive.Sign(context.Background(), c)
+	if err != nil {
+		return nil, fmt.Errorf("Sqrt: %w", err)
+	}
+	if sg < 0 {
 		return nil, fmt.Errorf("Sqrt: %w", ErrNegative)
 	}
 	return New(constructive.Sqrt(c), rational.One()), nil
@@ -144,7 +153,11 @@ func (u *Real) Pow(n *Real) (*Real, error) {
 	}
 
 	c := u.Constructive()
-	if u.IsZero() || constructive.Sign(c) < 0 {
+	neg, err := u.nonPositive(c)
+	if err != nil {
+		return nil, fmt.Errorf("Pow: %w", err)
+	}
+	if neg {
 		return nil, fmt.Errorf("Pow: %w", ErrNonPositive)
 	}
 
@@ -155,7 +168,11 @@ func (u *Real) Pow(n *Real) (*Real, error) {
 // returns ErrNonPositive otherwise.
 func (u *Real) Log10() (*Real, error) {
 	c := u.Constructive()
-	if u.IsZero() || constructive.Sign(c) < 0 {
+	neg, err := u.nonPositive(c)
+	if err != nil {
+		return nil, fmt.Errorf("Log10: %w", err)
+	}
+	if neg {
 		return nil, fmt.Errorf("Log10: %w", ErrNonPositive)
 	}
 	return New(constructive.Ln(c), rational.One()).Divide(ln10()), nil
@@ -165,7 +182,11 @@ func (u *Real) Log10() (*Real, error) {
 // returns ErrNonPositive otherwise.
 func (u *Real) Log2() (*Real, error) {
 	c := u.Constructive()
-	if u.IsZero() || constructive.Sign(c) < 0 {
+	neg, err := u.nonPositive(c)
+	if err != nil {
+		return nil, fmt.Errorf("Log2: %w", err)
+	}
+	if neg {
 		return nil, fmt.Errorf("Log2: %w", ErrNonPositive)
 	}
 	return New(constructive.Ln(c), rational.One()).Divide(Ln2()), nil
@@ -176,12 +197,20 @@ func (u *Real) Log2() (*Real, error) {
 // ErrNonPositive, and a base of one returns ErrInvalidBase.
 func (u *Real) Log(base *Real) (*Real, error) {
 	c := u.Constructive()
-	if u.IsZero() || constructive.Sign(c) < 0 {
+	neg, err := u.nonPositive(c)
+	if err != nil {
+		return nil, fmt.Errorf("Log: %w", err)
+	}
+	if neg {
 		return nil, fmt.Errorf("Log: %w", ErrNonPositive)
 	}
 
 	bc := base.Constructive()
-	if base.IsZero() || constructive.Sign(bc) < 0 {
+	neg, err = base.nonPositive(bc)
+	if err != nil {
+		return nil, fmt.Errorf("Log: %w", err)
+	}
+	if neg {
 		return nil, fmt.Errorf("Log: %w", ErrNonPositive)
 	}
 	if base.cr == constructive.One() && base.rr.Cmp(rational.One()) == 0 {
@@ -265,7 +294,11 @@ func (u *Real) Asin() (*Real, error) {
 
 	c := u.Constructive()
 	s := constructive.Subtract(constructive.One(), constructive.Square(c))
-	if constructive.Sign(s) < 0 {
+	sg, err := constructive.Sign(context.Background(), s)
+	if err != nil {
+		return nil, fmt.Errorf("Asin: %w", err)
+	}
+	if sg < 0 {
 		return nil, fmt.Errorf("Asin: %w", ErrOutsideUnitInterval)
 	}
 	inner := constructive.Divide(c, constructive.Sqrt(s))
@@ -292,17 +325,29 @@ func (y *Real) Atan2(x *Real) (*Real, error) {
 		return nil, fmt.Errorf("Atan2: %w", ErrUndefinedAtOrigin)
 	}
 	if xZero {
-		if y.sign() > 0 {
+		ys, err := y.sign()
+		if err != nil {
+			return nil, fmt.Errorf("Atan2: %w", err)
+		}
+		if ys > 0 {
 			return halfPi(), nil
 		}
 		return halfPi().Negate(), nil
 	}
 
 	base := y.Divide(x).Atan()
-	if x.sign() > 0 {
+	xs, err := x.sign()
+	if err != nil {
+		return nil, fmt.Errorf("Atan2: %w", err)
+	}
+	if xs > 0 {
 		return base, nil
 	}
-	if y.sign() >= 0 {
+	ys, err := y.sign()
+	if err != nil {
+		return nil, fmt.Errorf("Atan2: %w", err)
+	}
+	if ys >= 0 {
 		return base.Add(Pi()), nil
 	}
 	return base.Subtract(Pi()), nil
@@ -326,9 +371,24 @@ func (u *Real) unitEndpoint() int {
 
 // sign returns the sign of u: 0 when u is structurally zero, otherwise the
 // constructive sign, which terminates for nonzero values.
-func (u *Real) sign() int {
+func (u *Real) sign() (int, error) {
 	if u.IsZero() {
-		return 0
+		return 0, nil
 	}
-	return constructive.Sign(u.Constructive())
+	return constructive.Sign(context.Background(), u.Constructive())
+}
+
+// nonPositive reports whether u, whose constructive component is c, is zero or
+// negative. A structural zero is decided without approximating c.
+func (u *Real) nonPositive(c constructive.Real) (bool, error) {
+	if u.IsZero() {
+		return true, nil
+	}
+
+	sg, err := constructive.Sign(context.Background(), c)
+	if err != nil {
+		return false, err
+	}
+
+	return sg < 0, nil
 }

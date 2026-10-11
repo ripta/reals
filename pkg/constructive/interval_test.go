@@ -36,7 +36,7 @@ func TestIntervalNew(t *testing.T) {
 	for _, test := range intervalNewTests {
 		t.Run(test.name, func(t *testing.T) {
 			iv := New(test.p, test.q)
-			if PreciseCmp(iv.Lo, iv.Hi, -100) > 0 {
+			if mustPreciseCmp(t, iv.Lo, iv.Hi, -100) > 0 {
 				t.Errorf("normalization violated: Lo > Hi")
 			}
 			assertEqualAtPrecision(t, iv.Lo, test.lo, -100)

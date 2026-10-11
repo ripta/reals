@@ -20,3 +20,14 @@ func mustText(t testing.TB, c constructive.Real, dec, radix int) string {
 
 	return text
 }
+
+func mustPreciseCmp(t testing.TB, a, b constructive.Real, p int) int {
+	t.Helper()
+
+	v, err := constructive.PreciseCmp(testCtx, a, b, p)
+	if err != nil {
+		t.Fatalf("PreciseCmp(%d): %v", p, err)
+	}
+
+	return v
+}

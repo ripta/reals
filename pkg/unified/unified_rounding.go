@@ -1,6 +1,8 @@
 package unified
 
 import (
+	"context"
+
 	"github.com/ripta/reals/pkg/constructive"
 	"github.com/ripta/reals/pkg/rational"
 )
@@ -11,7 +13,8 @@ func (u *Real) Floor(p int) *Real {
 	if u.cr == constructive.One() {
 		return New(constructive.One(), u.rr.Floor())
 	}
-	return New(constructive.Floor(u.Constructive(), p), rational.One())
+	r, _ := constructive.Floor(context.Background(), u.Constructive(), p)
+	return New(r, rational.One())
 }
 
 // Ceil returns the least integer greater than or equal to u. A purely rational
@@ -20,7 +23,8 @@ func (u *Real) Ceil(p int) *Real {
 	if u.cr == constructive.One() {
 		return New(constructive.One(), u.rr.Ceil())
 	}
-	return New(constructive.Ceil(u.Constructive(), p), rational.One())
+	r, _ := constructive.Ceil(context.Background(), u.Constructive(), p)
+	return New(r, rational.One())
 }
 
 // Round returns the nearest integer to u, rounding half away from zero. A purely
@@ -30,7 +34,8 @@ func (u *Real) Round(p int) *Real {
 	if u.cr == constructive.One() {
 		return New(constructive.One(), u.rr.Round())
 	}
-	return New(constructive.Round(u.Constructive(), p), rational.One())
+	r, _ := constructive.Round(context.Background(), u.Constructive(), p)
+	return New(r, rational.One())
 }
 
 // RoundToEven returns the nearest integer to u, rounding ties to even. A purely
@@ -40,7 +45,8 @@ func (u *Real) RoundToEven(p int) *Real {
 	if u.cr == constructive.One() {
 		return New(constructive.One(), u.rr.RoundToEven())
 	}
-	return New(constructive.RoundToEven(u.Constructive(), p), rational.One())
+	r, _ := constructive.RoundToEven(context.Background(), u.Constructive(), p)
+	return New(r, rational.One())
 }
 
 // Min returns the lesser of u and other. When both are purely rational the
@@ -53,7 +59,8 @@ func (u *Real) Min(other *Real, p int) *Real {
 		}
 		return other
 	}
-	if constructive.PreciseCmp(u.Constructive(), other.Constructive(), p) <= 0 {
+	v, _ := constructive.PreciseCmp(context.Background(), u.Constructive(), other.Constructive(), p)
+	if v <= 0 {
 		return u
 	}
 	return other
@@ -69,7 +76,8 @@ func (u *Real) Max(other *Real, p int) *Real {
 		}
 		return other
 	}
-	if constructive.PreciseCmp(u.Constructive(), other.Constructive(), p) >= 0 {
+	v, _ := constructive.PreciseCmp(context.Background(), u.Constructive(), other.Constructive(), p)
+	if v >= 0 {
 		return u
 	}
 	return other

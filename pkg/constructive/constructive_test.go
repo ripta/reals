@@ -31,7 +31,11 @@ var signumTests = []signumTest{
 
 func TestSignum(t *testing.T) {
 	for _, test := range signumTests {
-		if result := Sign(test.input); result != test.expected {
+		result, err := Sign(testCtx, test.input)
+		if err != nil {
+			t.Fatalf("Sign: %v", err)
+		}
+		if result != test.expected {
 			t.Errorf("expected %d, got %d", test.expected, result)
 		}
 	}
@@ -86,7 +90,11 @@ var cmpTests = []cmpTest{
 
 func TestCmp(t *testing.T) {
 	for _, test := range cmpTests {
-		if result := Cmp(test.inputA, test.inputB); result != test.expected {
+		result, err := Cmp(testCtx, test.inputA, test.inputB)
+		if err != nil {
+			t.Fatalf("Cmp: %v", err)
+		}
+		if result != test.expected {
 			t.Errorf("expected %d, got %d", test.expected, result)
 		}
 	}
@@ -118,7 +126,7 @@ var preciseCmpTests = []preciseCmpTest{
 
 func TestPreciseCmp(t *testing.T) {
 	for _, test := range preciseCmpTests {
-		if result := PreciseCmp(test.inputA, test.inputB, -50); result != test.expected {
+		if result := mustPreciseCmp(t, test.inputA, test.inputB, -50); result != test.expected {
 			t.Errorf("expected %d, got %d", test.expected, result)
 		}
 	}
@@ -361,7 +369,7 @@ func checkEpsilon(t *testing.T, exponent int, sh, s1, s2, s3 string) {
 
 func assertEqualAtPrecision(t *testing.T, a, b Real, precision int) {
 	t.Helper()
-	if result := PreciseCmp(a, b, precision); result != 0 {
+	if result := mustPreciseCmp(t, a, b, precision); result != 0 {
 		t.Errorf("expected [1] to be equal to [2] at precision %d\n[1]: %s\n     %#v\n[2]: %s\n     %#v", precision, mustText(t, a, -precision, 10), a, mustText(t, b, -precision, 10), b)
 	}
 }
@@ -552,7 +560,7 @@ var floorTests = []roundingTest{
 func TestFloor(t *testing.T) {
 	for _, test := range floorTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), Floor(test.input, -50), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), mustFloor(t, test.input, -50), -50)
 		})
 	}
 }
@@ -569,7 +577,7 @@ var ceilTests = []roundingTest{
 func TestCeil(t *testing.T) {
 	for _, test := range ceilTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), Ceil(test.input, -50), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), mustCeil(t, test.input, -50), -50)
 		})
 	}
 }
@@ -588,7 +596,7 @@ var roundTests = []roundingTest{
 func TestRound(t *testing.T) {
 	for _, test := range roundTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), Round(test.input, -50), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), mustRound(t, test.input, -50), -50)
 		})
 	}
 }
@@ -605,7 +613,7 @@ var roundToEvenTests = []roundingTest{
 func TestRoundToEven(t *testing.T) {
 	for _, test := range roundToEvenTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, FromInt64(test.expected), RoundToEven(test.input, -50), -50)
+			assertEqualAtPrecision(t, FromInt64(test.expected), mustRoundToEven(t, test.input, -50), -50)
 		})
 	}
 }

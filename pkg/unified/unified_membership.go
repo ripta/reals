@@ -1,6 +1,8 @@
 package unified
 
 import (
+	"context"
+
 	"github.com/ripta/reals/pkg/constructive"
 )
 
@@ -34,7 +36,15 @@ func signOfDiff(a, b *Real, p int) (sign int, exact bool) {
 	if a.cr == constructive.One() && b.cr == constructive.One() {
 		return a.rr.Cmp(b.rr), true
 	}
-	return constructive.PreciseSign(constructive.Subtract(a.Constructive(), b.Constructive()), p), false
+
+	diff := constructive.Subtract(a.Constructive(), b.Constructive())
+
+	v, err := constructive.PreciseSign(context.Background(), diff, p)
+	if err != nil {
+		return 0, false
+	}
+
+	return v, false
 }
 
 // Locate reports where x sits relative to the closed interval iv at precision p.

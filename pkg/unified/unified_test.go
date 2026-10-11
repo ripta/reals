@@ -44,7 +44,7 @@ func assertEqualAtPrecision(t *testing.T, expected, actual *Real, precision int)
 	t.Helper()
 	a := expected.Constructive()
 	b := actual.Constructive()
-	if result := constructive.PreciseCmp(a, b, precision); result != 0 {
+	if result := mustPreciseCmp(t, a, b, precision); result != 0 {
 		t.Errorf("expected [1] to be equal to [2] at precision %d\n[1]: %s\n     %#v\n[2]: %s\n     %#v",
 			precision,
 			mustText(t, a, -precision, 10),
@@ -107,7 +107,7 @@ func TestConstructive(t *testing.T) {
 	for _, test := range constructiveTests {
 		t.Run(test.name, func(t *testing.T) {
 			actual := test.input.Constructive()
-			if result := constructive.PreciseCmp(test.expected, actual, -100); result != 0 {
+			if result := mustPreciseCmp(t, test.expected, actual, -100); result != 0 {
 				t.Errorf("expected %s, got %s",
 					mustText(t, test.expected, 100, 10),
 					mustText(t, actual, 100, 10))
@@ -248,7 +248,7 @@ func TestSubtract(t *testing.T) {
 		abConst := ab.Constructive()
 		baConst := ba.Constructive()
 
-		if constructive.PreciseCmp(abConst, baConst, -100) == 0 {
+		if mustPreciseCmp(t, abConst, baConst, -100) == 0 {
 			t.Errorf("expected a-b != b-a, but got equal values")
 		}
 

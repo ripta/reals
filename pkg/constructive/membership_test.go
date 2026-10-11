@@ -88,7 +88,11 @@ var locateTests = []locateTest{
 func TestLocate(t *testing.T) {
 	for _, test := range locateTests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Locate(test.iv, test.x, test.p); got != test.expected {
+			got, err := Locate(testCtx, test.iv, test.x, test.p)
+			if err != nil {
+				t.Fatalf("Locate: %v", err)
+			}
+			if got != test.expected {
 				t.Errorf("Locate() = %v, want %v", got, test.expected)
 			}
 		})
@@ -148,7 +152,11 @@ var isEmptyTests = []isEmptyTest{
 func TestIsEmpty(t *testing.T) {
 	for _, test := range isEmptyTests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := IsEmpty(test.iv, test.p); got != test.expected {
+			got, err := IsEmpty(testCtx, test.iv, test.p)
+			if err != nil {
+				t.Fatalf("IsEmpty: %v", err)
+			}
+			if got != test.expected {
 				t.Errorf("IsEmpty() = %v, want %v", got, test.expected)
 			}
 		})
@@ -189,7 +197,11 @@ var overlapTests = []overlapTest{
 func TestOverlap(t *testing.T) {
 	for _, test := range overlapTests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := Overlap(test.a, test.b, test.p); got != test.expected {
+			got, err := Overlap(testCtx, test.a, test.b, test.p)
+			if err != nil {
+				t.Fatalf("Overlap: %v", err)
+			}
+			if got != test.expected {
 				t.Errorf("Overlap() = %v, want %v", got, test.expected)
 			}
 		})

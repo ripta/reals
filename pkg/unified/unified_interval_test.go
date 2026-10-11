@@ -10,7 +10,7 @@ import (
 // assertLoEqHi checks the interval collapsed to a point at the given precision.
 func assertLoEqHi(t *testing.T, iv Interval, precision int) {
 	t.Helper()
-	if constructive.PreciseCmp(iv.lo.Constructive(), iv.hi.Constructive(), precision) != 0 {
+	if mustPreciseCmp(t, iv.lo.Constructive(), iv.hi.Constructive(), precision) != 0 {
 		t.Errorf("expected lo == hi, got lo != hi at precision %d", precision)
 	}
 }
@@ -69,7 +69,7 @@ func TestUnifiedIntervalNewEqualEndpoints(t *testing.T) {
 
 func TestUnifiedIntervalNewIrrationalFallback(t *testing.T) {
 	iv := NewInterval(Pi(), rat(3, 1))
-	if constructive.PreciseCmp(iv.lo.Constructive(), iv.hi.Constructive(), -100) > 0 {
+	if mustPreciseCmp(t, iv.lo.Constructive(), iv.hi.Constructive(), -100) > 0 {
 		t.Errorf("normalization violated: lo > hi")
 	}
 	assertEqualAtPrecision(t, iv.lo, rat(3, 1), -100)

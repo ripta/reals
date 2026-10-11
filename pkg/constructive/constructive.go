@@ -166,33 +166,37 @@ func AsConstructionIndent(c Real, indent string) string {
 	return out.String()
 }
 
-// Cmp compares two Real numbers a and b with higher and higher
-// precision until a non-zero result is found. It returns 1 if `a > b`,
-// -1 if `a < b`.
+// Cmp compares two Real numbers a and b with higher and higher precision until a
+// non-zero result is found. It returns 1 if `a > b` and -1 if `a < b`.
 //
-// This function never terminates if `a == b`; use PreciseCmp instead.
-func Cmp(a, b Real) int {
+// If a == b, no precision ever tells them apart. Cmp then runs until ctx is done and
+// returns its error, or until the next precision leaves the valid range and returns
+// ErrUndecided. ctx is checked before each doubling. Use PreciseCmp to bound the work
+// instead. Errors from approximating a or b are returned as they are.
+func Cmp(ctx context.Context, a, b Real) (int, error) {
 	for p := -20; ; p *= 2 {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
 		if !IsPrecisionValid(p) {
-			return 0
+			return 0, ErrUndecided
 		}
-		if v := PreciseCmp(a, b, p); v != 0 {
-			return v
+
+		v, err := PreciseCmp(ctx, a, b, p)
+		if err != nil {
+			return 0, err
+		}
+		if v != 0 {
+			return v, nil
 		}
 	}
 }
 
-// PreciseCmp compares two Real numbers a and b with a precision p.
-func PreciseCmp(a, b Real, p int) int {
-	v, err := preciseCmp(context.Background(), a, b, p)
-	if err != nil {
-		return 0
-	}
-
-	return v
-}
-
-func preciseCmp(ctx context.Context, a, b Real, p int) (int, error) {
+// PreciseCmp compares two Real numbers a and b with a precision p. It returns 0 when
+// they are indistinguishable at p. A nil operand returns ErrNilReal, and errors from
+// approximating an operand are returned as they are.
+func PreciseCmp(ctx context.Context, a, b Real, p int) (int, error) {
 	if a == nil || b == nil {
 		return 0, ErrNilReal
 	}
@@ -289,17 +293,10 @@ func decidedMSD(ctx context.Context, c Real, n int) (int, error) {
 	}
 }
 
-// PreciseSign computes the sign of a Real number c given precision p.
-func PreciseSign(c Real, p int) int {
-	v, err := preciseSign(context.Background(), c, p)
-	if err != nil {
-		return 0
-	}
-
-	return v
-}
-
-func preciseSign(ctx context.Context, c Real, p int) (int, error) {
+// PreciseSign computes the sign of a Real number c given precision p. It returns 0
+// when c is indistinguishable from zero at p. A nil c returns ErrNilReal, and errors
+// from approximating c are returned as they are.
+func PreciseSign(ctx context.Context, c Real, p int) (int, error) {
 	if c == nil {
 		return 0, ErrNilReal
 	}
@@ -319,24 +316,13 @@ func preciseSign(ctx context.Context, c Real, p int) (int, error) {
 	return ic.Sign(), nil
 }
 
-// Sign computes the sign of a Real number c. It returns 1 if c > 0,
-// or -1 if c < 0.
+// Sign computes the sign of a Real number c. It returns 1 if c > 0 and -1 if c < 0.
 //
-// If c == 0, this function stops only at the precision-validity bound, which is
-// impractically far, and returns 0 there. Use PreciseSign instead.
-func Sign(c Real) int {
-	v, err := sign(context.Background(), c)
-	if err != nil {
-		return 0
-	}
-
-	return v
-}
-
-// sign refines c until its sign is known. It checks the context before each
-// doubling and gives up with ErrUndecided once the next precision it would ask for
-// is outside the valid range, which is where a value equal to zero ends up.
-func sign(ctx context.Context, c Real) (int, error) {
+// If c == 0, no precision ever shows a nonzero sign. Sign then runs until ctx is done
+// and returns its error, or until the next precision leaves the valid range and
+// returns ErrUndecided. ctx is checked before each doubling. Use PreciseSign to bound
+// the work instead. Errors from approximating c are returned as they are.
+func Sign(ctx context.Context, c Real) (int, error) {
 	for p := -20; ; p *= 2 {
 		if err := ctx.Err(); err != nil {
 			return 0, err
@@ -346,7 +332,7 @@ func sign(ctx context.Context, c Real) (int, error) {
 			return 0, ErrUndecided
 		}
 
-		r, err := preciseSign(ctx, c, p-1)
+		r, err := PreciseSign(ctx, c, p-1)
 		if err != nil {
 			return 0, err
 		}
@@ -777,7 +763,7 @@ func floorInt(ctx context.Context, c Real, p int) (*big.Int, error) {
 	}
 
 	n := scale(ic, p)
-	sg, err := preciseSign(ctx, Subtract(c, FromBigInt(n)), p)
+	sg, err := PreciseSign(ctx, Subtract(c, FromBigInt(n)), p)
 	if err != nil {
 		return nil, err
 	}
@@ -798,7 +784,7 @@ func roundParts(ctx context.Context, c Real, p int) (*big.Int, int, error) {
 	}
 
 	frac := Subtract(c, FromBigInt(f))
-	half, err := preciseCmp(ctx, ShiftLeft(frac, 1), One(), p)
+	half, err := PreciseCmp(ctx, ShiftLeft(frac, 1), One(), p)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -810,27 +796,27 @@ func roundParts(ctx context.Context, c Real, p int) (*big.Int, int, error) {
 // integer boundary at precision p. A value indistinguishable from an integer at
 // p snaps to that integer; an exact rational is decided exactly regardless of p.
 //
-// A nil Real is returned when c cannot be approximated at p.
-func Floor(c Real, p int) Real {
-	f, err := floorInt(context.Background(), c, p)
+// Errors from approximating c are returned as they are, with a nil Real.
+func Floor(ctx context.Context, c Real, p int) (Real, error) {
+	f, err := floorInt(ctx, c, p)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return FromBigInt(f)
+	return FromBigInt(f), nil
 }
 
 // Ceil computes the least integer greater than or equal to c, deciding the
 // integer boundary at precision p.
 //
-// A nil Real is returned when c cannot be approximated at p.
-func Ceil(c Real, p int) Real {
-	f, err := floorInt(context.Background(), Negate(c), p)
+// Errors from approximating c are returned as they are, with a nil Real.
+func Ceil(ctx context.Context, c Real, p int) (Real, error) {
+	f, err := floorInt(ctx, Negate(c), p)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return FromBigInt(bigNeg(f))
+	return FromBigInt(bigNeg(f)), nil
 }
 
 // Round computes the nearest integer to c, rounding half away from zero, deciding
@@ -838,53 +824,51 @@ func Ceil(c Real, p int) Real {
 // decidable, so a value indistinguishable from a half-integer at p is treated as
 // a tie.
 //
-// A nil Real is returned when c cannot be approximated at p.
-func Round(c Real, p int) Real {
-	ctx := context.Background()
-
+// Errors from approximating c are returned as they are, with a nil Real.
+func Round(ctx context.Context, c Real, p int) (Real, error) {
 	f, half, err := roundParts(ctx, c, p)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	switch {
 	case half < 0:
-		return FromBigInt(f)
+		return FromBigInt(f), nil
 	case half > 0:
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	default:
-		sg, err := preciseSign(ctx, c, p)
+		sg, err := PreciseSign(ctx, c, p)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 
 		if sg < 0 {
-			return FromBigInt(f)
+			return FromBigInt(f), nil
 		}
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	}
 }
 
 // RoundToEven computes the nearest integer to c, rounding ties to even, deciding
 // the integer boundary at precision p.
 //
-// A nil Real is returned when c cannot be approximated at p.
-func RoundToEven(c Real, p int) Real {
-	f, half, err := roundParts(context.Background(), c, p)
+// Errors from approximating c are returned as they are, with a nil Real.
+func RoundToEven(ctx context.Context, c Real, p int) (Real, error) {
+	f, half, err := roundParts(ctx, c, p)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	switch {
 	case half < 0:
-		return FromBigInt(f)
+		return FromBigInt(f), nil
 	case half > 0:
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	default:
 		if f.Bit(0) == 0 {
-			return FromBigInt(f)
+			return FromBigInt(f), nil
 		}
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	}
 }
 
@@ -932,7 +916,7 @@ func (c *constructiveCondsign) approximate(ctx context.Context, p int) (*big.Int
 		return scale(ia, -1), nil
 	}
 
-	sg, err := sign(ctx, c.r)
+	sg, err := Sign(ctx, c.r)
 	if err != nil {
 		return nil, err
 	}

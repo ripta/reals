@@ -481,7 +481,7 @@ var signLoopTests = []signLoopTest{
 func TestSignLoop(t *testing.T) {
 	for _, test := range signLoopTests {
 		t.Run(test.Name, func(t *testing.T) {
-			got, err := sign(test.Context(), test.Value)
+			got, err := Sign(test.Context(), test.Value)
 			assert.ErrorIs(t, err, test.Err)
 			assert.Equal(t, test.Expected, got)
 		})

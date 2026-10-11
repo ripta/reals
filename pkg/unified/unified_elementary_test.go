@@ -329,8 +329,8 @@ func TestCbrtDecidesSignWhenApproximated(t *testing.T) {
 	neg := New(constructive.Sqrt2(), rational.New64(-1, 1)).Cbrt()
 	pos := New(constructive.Sqrt2(), rational.One()).Cbrt()
 
-	assert.Equal(t, -1, constructive.PreciseSign(neg.Constructive(), -20))
-	assert.Equal(t, 1, constructive.PreciseSign(pos.Constructive(), -20))
+	assert.Equal(t, -1, mustPreciseSign(t, neg.Constructive(), -20))
+	assert.Equal(t, 1, mustPreciseSign(t, pos.Constructive(), -20))
 }
 
 // piFrac builds the unified Real (a/b)·π, used for expected inverse-trig angles.
@@ -481,7 +481,7 @@ func TestGammaNearPoleIrrational(t *testing.T) {
 	assert.NoError(t, err)
 
 	c := result.Constructive()
-	if constructive.PreciseCmp(c, One().Constructive(), -60) <= 0 {
+	if mustPreciseCmp(t, c, One().Constructive(), -60) <= 0 {
 		t.Errorf("expected Gamma(√2/100) to exceed 1, got %s", mustText(t, c, 6, 10))
 	}
 }
