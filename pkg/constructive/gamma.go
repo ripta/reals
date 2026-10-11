@@ -19,9 +19,10 @@ var log2TwoPi = math.Log2(2 * math.Pi)
 // Γ(x)·Γ(1−x) = π / sin(πx). Γ is composed entirely from existing primitives
 // rather than bespoke series machinery; see (*spougeGamma).approximate.
 //
-// Γ has poles at the non-positive integers. This layer does not guard them, and
-// such an argument drives a non-terminating refinement; callers reject exact
-// poles upstream.
+// Γ has poles at the non-positive integers. This layer does not guard them. At a
+// pole the reflection divides by a zero sine, and the inverse refines until it
+// ends in ErrUndecided or the context's error. Callers reject exact poles
+// upstream.
 //
 // The reflection is chosen on the first approximation, not here.
 func Gamma(c Real) Real {

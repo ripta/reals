@@ -317,7 +317,8 @@ func (u *Real) Asin(ctx context.Context) (*Real, error) {
 }
 
 // Acos returns the arccosine of u, in radians, as π/2 - asin(u). It requires an
-// argument in [-1, 1] and returns ErrOutsideUnitInterval otherwise.
+// argument in [-1, 1] and returns ErrOutsideUnitInterval otherwise. Errors from
+// deciding the sign, including the context error, are returned.
 func (u *Real) Acos(ctx context.Context) (*Real, error) {
 	asin, err := u.Asin(ctx)
 	if err != nil {
