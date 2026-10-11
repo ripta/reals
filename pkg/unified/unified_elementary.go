@@ -215,19 +215,34 @@ func (u *Real) Tanh() *Real {
 }
 
 // Cbrt returns the real cube root of u. It is total: it accepts negative input,
-// so Cbrt(-8) is -2, and Cbrt(0) is 0. The cube root of a negative value is
-// computed by sign extraction over Pow(|u|, 1/3), keeping the result real.
+// so Cbrt(-8) is -2, and Cbrt(0) is 0. The result is the cube root of |u|, with
+// the sign of u applied by a conditional node. The sign is decided when the
+// result is approximated, not here.
 func (u *Real) Cbrt() *Real {
 	if u.IsZero() {
 		return Zero()
 	}
 
-	third := New(constructive.One(), rational.New64(1, 3))
-	result, _ := u.Abs().Pow(third)
-	if constructive.Sign(u.Constructive()) < 0 {
-		return result.Negate()
+	third := constructive.FromRat(1, 3)
+
+	if u.cr == constructive.One() {
+		magnitude := u.rr
+		if magnitude.Sign() < 0 {
+			magnitude = magnitude.Negate()
+		}
+
+		result := New(constructive.Pow(magnitude.Constructive(), third), rational.One())
+		if u.rr.Sign() < 0 {
+			return result.Negate()
+		}
+
+		return result
 	}
-	return result
+
+	c := u.Constructive()
+	root := constructive.Pow(constructive.Abs(c), third)
+
+	return New(constructive.CondSign(c, constructive.Negate(root), root), rational.One())
 }
 
 // Atan returns the arctangent of u, in radians. It is total.

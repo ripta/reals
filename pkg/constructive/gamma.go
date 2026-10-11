@@ -22,19 +22,20 @@ var log2TwoPi = math.Log2(2 * math.Pi)
 // Γ has poles at the non-positive integers. This layer does not guard them, and
 // such an argument drives a non-terminating refinement; callers reject exact
 // poles upstream.
+//
+// The reflection is chosen on the first approximation, not here.
 func Gamma(c Real) Real {
-	rough := roughApproximation(c, -2)
-	if rough == nil {
-		return nil
-	}
+	return newDeferredReduction("Gamma", c, -2, reduceGamma)
+}
 
+func reduceGamma(c Real, rough *big.Int) (Real, error) {
 	if rough.Cmp(big.NewInt(2)) < 0 {
 		// x < 1/2: reflect into the convergent region Γ(1−x).
 		reflected := Multiply(Sine(Multiply(Pi(), c)), Gamma(Subtract(One(), c)))
-		return Divide(Pi(), reflected)
+		return Divide(Pi(), reflected), nil
 	}
 
-	return newSpougeGamma(c)
+	return newSpougeGamma(c), nil
 }
 
 type spougeGamma struct {
@@ -66,8 +67,6 @@ func (c *spougeGamma) approximate(ctx context.Context, p int) (*big.Int, error) 
 	sum := Sqrt(Multiply(Two(), Pi())) // c_0 = √(2π)
 	factorial := big.NewInt(1)         // (k−1)! carried across iterations
 	for k := 1; k < n; k++ {
-		// Building each term runs the eager Pow and Exp constructors, which do real
-		// work before any approximation reaches the context check.
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

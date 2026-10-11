@@ -259,6 +259,36 @@ func msd(ctx context.Context, c Real, n int) (int, error) {
 	return knownMSD(c)
 }
 
+// decidedMSD returns the most significant digit of c, refining past n until c is
+// known to be nonzero. It checks the context before each refinement and gives up
+// with ErrUndecided once the next precision is outside the valid range, which is
+// where a value equal to zero ends up.
+func decidedMSD(ctx context.Context, c Real, n int) (int, error) {
+	for {
+		m, err := msd(ctx, c, n)
+		if err != nil {
+			return 0, err
+		}
+
+		if m != math.MinInt {
+			return m, nil
+		}
+
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		if n > 0 {
+			n = 0
+		}
+
+		n = n*2 - 20
+		if !IsPrecisionValid(n - 2) {
+			return 0, ErrUndecided
+		}
+	}
+}
+
 // PreciseSign computes the sign of a Real number c given precision p.
 func PreciseSign(c Real, p int) int {
 	v, err := preciseSign(context.Background(), c, p)
@@ -604,7 +634,7 @@ func newMultiplicativeInverse(r Real) Real {
 }
 
 func (c *constructiveMultiplicativeInverse) approximate(ctx context.Context, p int) (*big.Int, error) {
-	mr, err := msd(ctx, c.r, p)
+	mr, err := decidedMSD(ctx, c.r, p)
 	if err != nil {
 		return nil, err
 	}
@@ -627,7 +657,7 @@ func (c *constructiveMultiplicativeInverse) approximate(ctx context.Context, p i
 
 	absolute := bigAbs(divisor)
 	if absolute.Sign() == 0 {
-		return nil, ErrDivisionByZero
+		return nil, ErrUndecided
 	}
 
 	adj := bigAdd(dividend, bigRsh(absolute, 1))
@@ -716,6 +746,14 @@ func (c *constructiveNegation) asConstruction() string {
 // Abs computes the absolute value of c.
 func Abs(c Real) Real {
 	return newCondsign(c, Negate(c), c)
+}
+
+// CondSign selects between a and b by the sign of r. It is a if r < 0 and b if
+// r > 0. When r is zero, either is acceptable, and the node returns a value
+// within the approximation error of both. The sign is decided lazily, at
+// approximation time.
+func CondSign(r, a, b Real) Real {
+	return newCondsign(r, a, b)
 }
 
 // Max computes the maximum of a and b.
@@ -910,37 +948,24 @@ func (c *constructiveCondsign) asConstruction() string {
 	return fmt.Sprintf("CondSign(%s, %s, %s)", c.r.asConstruction(), c.a.asConstruction(), c.b.asConstruction())
 }
 
-// roughApproximation approximates c at precision p for a constructor that picks
-// its range reduction while it is being built. It has no context to honor, so it
-// runs unbounded, and an error yields nil.
+// Exp computes the e^c.
 //
-// NOTE: Transitional. A constructor should not approximate at all.
-func roughApproximation(c Real, p int) *big.Int {
-	v, err := approx(context.Background(), c, p)
-	if err != nil {
-		return nil
-	}
-
-	return v
+// The range reduction is chosen on the first approximation, not here.
+func Exp(c Real) Real {
+	return newDeferredReduction("Exp", c, -3, reduceExp)
 }
 
-// Exp computes the e^c.
-func Exp(c Real) Real {
-	rough := roughApproximation(c, -3)
-	if rough == nil {
-		return nil
-	}
-
+func reduceExp(c Real, rough *big.Int) (Real, error) {
 	// e^-c = 1/e^c
 	if rough.Sign() < 0 {
-		return Inverse(Exp(Negate(c)))
+		return Inverse(Exp(Negate(c))), nil
 	}
 
 	if rough.Cmp(big.NewInt(2)) > 0 {
-		return Square(Exp(ShiftRight(c, 1)))
+		return Square(Exp(ShiftRight(c, 1))), nil
 	}
 
-	return newPrescaledExponential(c)
+	return newPrescaledExponential(c), nil
 }
 
 type prescaledExponential struct {
@@ -995,19 +1020,29 @@ func (c *prescaledExponential) asConstruction() string {
 	return fmt.Sprintf("Pow(E, %s)", c.r.asConstruction())
 }
 
+// Ln computes the natural logarithm of c.
+//
+// An argument decided to be negative is reported as ErrNonPositive when the
+// result is first approximated. The range reduction is chosen then, not here.
+// Zero cannot be decided in bounded work, so it ends in ErrUndecided or in the
+// context error.
 func Ln(c Real) Real {
-	rough := roughApproximation(c, -4)
-	if rough == nil || rough.Sign() < 0 {
-		return nil
+	return newDeferredReduction("Ln", c, -4, reduceLn)
+}
+
+func reduceLn(c Real, rough *big.Int) (Real, error) {
+	if rough.Sign() < 0 {
+		return nil, ErrNonPositive
 	}
 
 	if rough.Cmp(big.NewInt(8)) < 0 {
-		return Negate(Ln(Inverse(c)))
+		return Negate(Ln(Inverse(c))), nil
 	}
 	if rough.Cmp(big.NewInt(24)) > 0 {
-		return ShiftLeft(Ln(Sqrt(Sqrt(c))), 2)
+		return ShiftLeft(Ln(Sqrt(Sqrt(c))), 2), nil
 	}
-	return SimpleLn(c)
+
+	return SimpleLn(c), nil
 }
 
 // SimpleLn computes the natural logarithm of `c`, for `1 < |c| < 2`.
@@ -1171,27 +1206,28 @@ func (c *prescaledSqrt) asConstruction() string {
 }
 
 // Cosine computes the cosine of c.
+//
+// The range reduction is chosen on the first approximation, not here.
 func Cosine(c Real) Real {
-	rough := roughApproximation(c, -1)
-	if rough == nil {
-		return nil
-	}
+	return newDeferredReduction("Cosine", c, -1, reduceCosine)
+}
 
+func reduceCosine(c Real, rough *big.Int) (Real, error) {
 	if rough.CmpAbs(big.NewInt(6)) >= 0 {
 		mult := bigDiv(rough, big.NewInt(6))
 		adj := Multiply(Pi(), FromBigInt(mult))
 		if bigBitAnd(mult, big.NewInt(1)).Sign() != 0 {
-			return Negate(Cosine(Subtract(c, adj)))
+			return Negate(Cosine(Subtract(c, adj))), nil
 		}
 
-		return Cosine(Subtract(c, adj))
+		return Cosine(Subtract(c, adj)), nil
 	}
 
 	if rough.CmpAbs(big.NewInt(2)) >= 0 {
-		return Subtract(ShiftLeft(Square(Cosine(ShiftRight(c, 1))), 1), One())
+		return Subtract(ShiftLeft(Square(Cosine(ShiftRight(c, 1))), 1), One()), nil
 	}
 
-	return newPrescaledCosine(c)
+	return newPrescaledCosine(c), nil
 }
 
 // Sine computes the sine of c, using the identity `sin(c) = cos(π/2 - c)`.
@@ -1211,19 +1247,21 @@ func Tangent(c Real) Real {
 // region. Odd symmetry strips the sign, the reciprocal identity
 // `atan(x) = π/2 - atan(1/x)` folds large arguments toward zero, and two
 // half-angle reductions pull the result below 1/4 before the series runs.
+//
+// The reduction is chosen on the first approximation, not here.
 func Arctangent(c Real) Real {
-	rough := roughApproximation(c, -3)
-	if rough == nil {
-		return nil
-	}
+	return newDeferredReduction("Arctangent", c, -3, reduceArctangent)
+}
 
+func reduceArctangent(c Real, rough *big.Int) (Real, error) {
 	if rough.Sign() < 0 {
-		return Negate(Arctangent(Negate(c)))
+		return Negate(Arctangent(Negate(c))), nil
 	}
 	if rough.Cmp(big.NewInt(8)) >= 0 {
-		return Subtract(ShiftRight(Pi(), 1), arctanReduced(Inverse(c)))
+		return Subtract(ShiftRight(Pi(), 1), arctanReduced(Inverse(c))), nil
 	}
-	return arctanReduced(c)
+
+	return arctanReduced(c), nil
 }
 
 // arctanReduced applies the half-angle reduction `atan(x) = 2·atan(x / (1 +

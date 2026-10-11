@@ -307,6 +307,32 @@ func TestCbrt(t *testing.T) {
 	}
 }
 
+var cbrtCubeTests = []unaryTest{
+	{name: "positive irrational", input: New(constructive.Sqrt2(), rational.One())},
+	{name: "negative irrational", input: New(constructive.Sqrt2(), rational.New64(-1, 1))},
+	{name: "negative fraction", input: rat(-5, 7)},
+	{name: "small positive", input: rat(1, 1000)},
+	{name: "pi multiple", input: New(constructive.Pi(), rational.New64(-3, 2))},
+}
+
+func TestCbrtCubesBack(t *testing.T) {
+	for _, test := range cbrtCubeTests {
+		t.Run(test.name, func(t *testing.T) {
+			root := test.input.Cbrt()
+			cubed := root.Multiply(root).Multiply(root)
+			assertEqualAtPrecision(t, test.input, cubed, -80)
+		})
+	}
+}
+
+func TestCbrtDecidesSignWhenApproximated(t *testing.T) {
+	neg := New(constructive.Sqrt2(), rational.New64(-1, 1)).Cbrt()
+	pos := New(constructive.Sqrt2(), rational.One()).Cbrt()
+
+	assert.Equal(t, -1, constructive.PreciseSign(neg.Constructive(), -20))
+	assert.Equal(t, 1, constructive.PreciseSign(pos.Constructive(), -20))
+}
+
 // piFrac builds the unified Real (a/b)·π, used for expected inverse-trig angles.
 func piFrac(a, b int64) *Real {
 	return New(constructive.Pi(), rational.New64(a, b))

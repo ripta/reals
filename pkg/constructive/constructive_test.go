@@ -1,9 +1,11 @@
 package constructive
 
 import (
+	"context"
 	"math"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -278,8 +280,11 @@ func TestText(t *testing.T) {
 	assert.Equal(t, "1.0471975511965977461542144610931676280657231331250352736583148641026055", mustText(t, Divide(Pi(), FromInt(3)), 70, 10))
 	assert.Equal(t, "0.5000000000000000000000000000000000000000000000000000000000000000000000", mustText(t, Cosine(Divide(Pi(), FromInt(3))), 70, 10))
 
-	_, err := Text(testCtx, Tangent(Divide(Pi(), FromInt(2))), 70, 10)
-	assert.ErrorIs(t, err, ErrDivisionByZero)
+	ctx, cancel := context.WithTimeout(testCtx, 200*time.Millisecond)
+	defer cancel()
+
+	_, err := Text(ctx, Tangent(Divide(Pi(), FromInt(2))), 70, 10)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 
 	// 2 ^ 3
 	assert.Equal(t,

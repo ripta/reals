@@ -407,7 +407,7 @@ var sentinelTests = []sentinelTest{
 		Name:      "inverse of zero",
 		Build:     func() Real { return Inverse(FromInt(0)) },
 		Precision: -10,
-		Expected:  ErrDivisionByZero,
+		Expected:  ErrUndecided,
 	},
 	{
 		Name:      "operand nil inside a composite",
