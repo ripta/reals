@@ -104,7 +104,7 @@ var lnTests = []partialUnaryTest{
 func TestLn(t *testing.T) {
 	for _, test := range lnTests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.input.Ln()
+			result, err := test.input.Ln(testCtx)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -126,7 +126,7 @@ var sqrtTests = []partialUnaryTest{
 func TestSqrt(t *testing.T) {
 	for _, test := range sqrtTests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.input.Sqrt()
+			result, err := test.input.Sqrt(testCtx)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -164,7 +164,7 @@ var powTests = []powTest{
 func TestPow(t *testing.T) {
 	for _, test := range powTests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.base.Pow(test.exponent)
+			result, err := test.base.Pow(testCtx, test.exponent)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -186,7 +186,7 @@ var log10Tests = []partialUnaryTest{
 func TestLog10(t *testing.T) {
 	for _, test := range log10Tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.input.Log10()
+			result, err := test.input.Log10(testCtx)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -208,7 +208,7 @@ var log2Tests = []partialUnaryTest{
 func TestLog2(t *testing.T) {
 	for _, test := range log2Tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.input.Log2()
+			result, err := test.input.Log2(testCtx)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -241,7 +241,7 @@ var logTests = []logTest{
 func TestLog(t *testing.T) {
 	for _, test := range logTests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.input.Log(test.base)
+			result, err := test.input.Log(testCtx, test.base)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -371,7 +371,7 @@ var asinTests = []partialUnaryTest{
 func TestAsin(t *testing.T) {
 	for _, test := range asinTests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.input.Asin()
+			result, err := test.input.Asin(testCtx)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -394,7 +394,7 @@ var acosTests = []partialUnaryTest{
 func TestAcos(t *testing.T) {
 	for _, test := range acosTests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.input.Acos()
+			result, err := test.input.Acos(testCtx)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -428,7 +428,7 @@ var atan2Tests = []binaryPartialTest{
 func TestAtan2(t *testing.T) {
 	for _, test := range atan2Tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := test.y.Atan2(test.x)
+			result, err := test.y.Atan2(testCtx, test.x)
 			if test.wantErr != nil {
 				assert.Nil(t, result)
 				assert.ErrorIs(t, err, test.wantErr)
@@ -442,7 +442,7 @@ func TestAtan2(t *testing.T) {
 
 // sqrtPi is √π, the value of Γ(1/2).
 func sqrtPi() *Real {
-	r, _ := Pi().Sqrt()
+	r, _ := Pi().Sqrt(testCtx)
 	return r
 }
 
@@ -451,9 +451,9 @@ var gammaTests = []partialUnaryTest{
 	{name: "Gamma(4)=6", input: rat(4, 1), expected: rat(6, 1)},
 	{name: "Gamma(1/2)=sqrt(pi)", input: Half(), expected: sqrtPi()},
 	{name: "Gamma(-1/2)=-2sqrt(pi)", input: rat(-1, 2), expected: sqrtPi().ShiftLeft(1).Negate()},
-	{name: "Gamma(0)", input: Zero(), wantErr: ErrGammaPole},
-	{name: "Gamma(-1)", input: NegativeOne(), wantErr: ErrGammaPole},
-	{name: "Gamma(-2)", input: rat(-2, 1), wantErr: ErrGammaPole},
+	{name: "Gamma(0)", input: Zero(), wantErr: ErrNonPositiveInteger},
+	{name: "Gamma(-1)", input: NegativeOne(), wantErr: ErrNonPositiveInteger},
+	{name: "Gamma(-2)", input: rat(-2, 1), wantErr: ErrNonPositiveInteger},
 }
 
 func TestGamma(t *testing.T) {

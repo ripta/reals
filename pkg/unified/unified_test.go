@@ -415,7 +415,8 @@ func TestDivide(t *testing.T) {
 		den := int64(1) << k
 		a := New(constructive.One(), rational.New64(num, 1))
 		b := New(constructive.One(), rational.New64(den, 1))
-		result := a.Divide(b).Floor(-4)
+		result, err := a.Divide(b).Floor(testCtx, -4)
+		assert.NoError(t, err)
 		assertEqualAtPrecision(t, Zero(), result, -100)
 	})
 }

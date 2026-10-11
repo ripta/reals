@@ -2,7 +2,6 @@ package unified
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/ripta/reals/pkg/constructive"
 	"github.com/ripta/reals/pkg/rational"
@@ -115,37 +114,45 @@ func (u *Real) IsZero() bool {
 	return u.rr.IsZero()
 }
 
-// FormattedString returns a string representation of the unified real number
-// with the specified number of decimal digits and radix.
-func (u *Real) FormattedString(decimalDigits, radix int) string {
-	text, err := constructive.Text(context.Background(), u.Constructive(), decimalDigits, radix)
-	if err != nil {
-		return fmt.Sprintf("<undefined: %v>", err)
+// Sign returns -1, 0, or 1 for the sign of u. A structural zero and a purely
+// rational value are decided exactly. Otherwise the sign is decided
+// constructively, which runs until ctx is done when u is a non-structural zero.
+// Errors from approximating u are returned as they are.
+func (u *Real) Sign(ctx context.Context) (int, error) {
+	if u.IsZero() {
+		return 0, nil
+	}
+	if u.cr == constructive.One() {
+		return u.rr.Sign(), nil
 	}
 
-	return text
+	return constructive.Sign(ctx, u.Constructive())
 }
 
-var _ fmt.Formatter = (*Real)(nil)
-
-// Format implements the fmt.Formatter interface for custom formatting.
-func (u *Real) Format(f fmt.State, c rune) {
-	switch c {
-	case 'f':
-		precision, ok := f.Precision()
-		if ok {
-			fmt.Fprint(f, u.FormattedString(precision, 10))
-			return
-		}
-
-	case 's', 'q':
-		if u.cr == constructive.One() {
-			fmt.Fprint(f, u.rr.String())
-			return
-		}
-
-	default:
+// Cmp compares u with other, returning -1, 0, or 1. A comparison against a
+// structural zero, or between two purely rational values, is decided exactly.
+// Otherwise it is decided constructively, which runs until ctx is done when the
+// operands are equal and not structurally so. Errors from approximating either
+// operand are returned as they are.
+func (u *Real) Cmp(ctx context.Context, other *Real) (int, error) {
+	switch {
+	case u.IsZero() && other.IsZero():
+		return 0, nil
+	case u.IsZero():
+		sg, err := other.Sign(ctx)
+		return -sg, err
+	case other.IsZero():
+		return u.Sign(ctx)
+	case u.cr == constructive.One() && other.cr == constructive.One():
+		return u.rr.Cmp(other.rr), nil
 	}
 
-	fmt.Fprint(f, u.FormattedString(30, 10))
+	return constructive.Cmp(ctx, u.Constructive(), other.Constructive())
+}
+
+// FormattedString returns a string representation of the unified real number
+// with the specified number of decimal digits and radix. Errors from
+// approximating u, including the context error, are returned as they are.
+func (u *Real) FormattedString(ctx context.Context, decimalDigits, radix int) (string, error) {
+	return constructive.Text(ctx, u.Constructive(), decimalDigits, radix)
 }

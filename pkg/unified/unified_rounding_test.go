@@ -5,6 +5,7 @@ import (
 
 	"github.com/ripta/reals/pkg/constructive"
 	"github.com/ripta/reals/pkg/rational"
+	"github.com/stretchr/testify/assert"
 )
 
 var floorTests = []unaryTest{
@@ -17,7 +18,9 @@ var floorTests = []unaryTest{
 func TestFloor(t *testing.T) {
 	for _, test := range floorTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, test.expected, test.input.Floor(-100), -100)
+			got, err := test.input.Floor(testCtx, -100)
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, got, -100)
 		})
 	}
 }
@@ -32,7 +35,9 @@ var ceilTests = []unaryTest{
 func TestCeil(t *testing.T) {
 	for _, test := range ceilTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, test.expected, test.input.Ceil(-100), -100)
+			got, err := test.input.Ceil(testCtx, -100)
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, got, -100)
 		})
 	}
 }
@@ -47,7 +52,9 @@ var roundTests = []unaryTest{
 func TestRound(t *testing.T) {
 	for _, test := range roundTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, test.expected, test.input.Round(-100), -100)
+			got, err := test.input.Round(testCtx, -100)
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, got, -100)
 		})
 	}
 }
@@ -62,7 +69,9 @@ var roundToEvenTests = []unaryTest{
 func TestRoundToEven(t *testing.T) {
 	for _, test := range roundToEvenTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, test.expected, test.input.RoundToEven(-100), -100)
+			got, err := test.input.RoundToEven(testCtx, -100)
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, got, -100)
 		})
 	}
 }
@@ -85,7 +94,9 @@ var minTests = []binaryTest{
 func TestMin(t *testing.T) {
 	for _, test := range minTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, test.expected, test.a.Min(test.b, -100), -100)
+			got, err := test.a.Min(testCtx, test.b, -100)
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, got, -100)
 		})
 	}
 }
@@ -101,7 +112,9 @@ var maxTests = []binaryTest{
 func TestMax(t *testing.T) {
 	for _, test := range maxTests {
 		t.Run(test.name, func(t *testing.T) {
-			assertEqualAtPrecision(t, test.expected, test.a.Max(test.b, -100), -100)
+			got, err := test.a.Max(testCtx, test.b, -100)
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, test.expected, got, -100)
 		})
 	}
 }
