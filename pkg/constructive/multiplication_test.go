@@ -62,7 +62,7 @@ func TestMultiplicationLargeOperandStaysCoarse(t *testing.T) {
 				probe := (test.P >> 1) - 2
 				bound := min(probe, test.P+test.TinyShift-3) - 1
 
-				got := large.tracker().MinPrecision
+				got := large.tracker().latest().precision
 				if got < bound {
 					t.Fatalf("large operand refined to %d, want no finer than %d", got, bound)
 				}

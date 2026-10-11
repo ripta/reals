@@ -35,8 +35,8 @@ func TestDeferredConstructionDoesNotApproximate(t *testing.T) {
 			node := test.Build(leaf)
 			assert.NotNil(t, node)
 			assert.Zero(t, leaf.calls)
-			assert.False(t, leaf.tracker().IsValid)
-			assert.False(t, node.tracker().IsValid)
+			assert.Nil(t, leaf.tracker().latest())
+			assert.Nil(t, node.tracker().latest())
 			assert.NotEmpty(t, AsConstruction(node))
 			assert.Zero(t, leaf.calls)
 		})
@@ -52,7 +52,7 @@ func TestDeferredFirstApproximationSurfacesLeafError(t *testing.T) {
 			_, err := Approximate(testCtx, node, -20)
 			assert.Equal(t, errLeaf, err)
 			assert.Positive(t, leaf.calls)
-			assert.False(t, node.tracker().IsValid)
+			assert.Nil(t, node.tracker().latest())
 		})
 	}
 }
@@ -78,7 +78,7 @@ func TestDeferredFailedFirstApproximationIsRetried(t *testing.T) {
 
 			_, err := Approximate(testCtx, node, -20)
 			assert.ErrorIs(t, err, errLeaf)
-			assert.False(t, node.tracker().IsValid)
+			assert.Nil(t, node.tracker().latest())
 
 			got, err := Approximate(testCtx, node, -20)
 			assert.NoError(t, err)
@@ -182,7 +182,7 @@ func TestLnNonPositive(t *testing.T) {
 
 			_, err := Approximate(testCtx, node, -20)
 			assert.ErrorIs(t, err, ErrNonPositive)
-			assert.False(t, node.tracker().IsValid)
+			assert.Nil(t, node.tracker().latest())
 		})
 	}
 }

@@ -172,7 +172,7 @@ func TestApproximateCancelledContext(t *testing.T) {
 
 			_, err := Approximate(cancelledContext(), node, -10)
 			assert.ErrorIs(t, err, context.Canceled)
-			assert.False(t, node.tracker().IsValid)
+			assert.Nil(t, node.tracker().latest())
 		})
 	}
 }
@@ -350,12 +350,12 @@ func TestFailedApproximationIsNotCached(t *testing.T) {
 
 			_, err := Approximate(testCtx, tree, -20)
 			assert.ErrorIs(t, err, errLeaf)
-			assert.False(t, leaf.tracker().IsValid)
-			assert.False(t, tree.tracker().IsValid)
+			assert.Nil(t, leaf.tracker().latest())
+			assert.Nil(t, tree.tracker().latest())
 
 			first, err := Approximate(testCtx, tree, -20)
 			assert.NoError(t, err)
-			assert.True(t, tree.tracker().IsValid)
+			assert.NotNil(t, tree.tracker().latest())
 
 			calls := leaf.calls
 			second, err := Approximate(testCtx, tree, -20)

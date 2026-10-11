@@ -222,6 +222,9 @@ func PreciseCmp(ctx context.Context, a, b Real, p int) (int, error) {
 }
 
 // Real represents a constructive real number.
+//
+// A Real is safe for concurrent use. Goroutines may approximate the same value, or
+// trees that share it, at the same time.
 type Real interface {
 	approximate(ctx context.Context, p int) (*big.Int, error)
 	asConstruction() string
@@ -232,16 +235,12 @@ type Real interface {
 // the MSD is n, then 2^(n-1) < |c| < 2^(n+1). It reads only what the tracker
 // already holds, so it fails when c has not been approximated yet.
 func knownMSD(c Real) (int, error) {
-	t := c.tracker()
-	if !t.IsValid {
+	a := c.tracker().latest()
+	if a == nil {
 		return 0, errNoKnownMSD
 	}
 
-	if t.MaxApproximation.Sign() >= 0 {
-		return t.MinPrecision + t.MaxApproximation.BitLen() - 1, nil
-	}
-
-	return t.MinPrecision + bigNeg(t.MaxApproximation).BitLen() - 1, nil
+	return a.precision + bigAbs(a.value).BitLen() - 1, nil
 }
 
 func msd(ctx context.Context, c Real, n int) (int, error) {
@@ -250,12 +249,12 @@ func msd(ctx context.Context, c Real, n int) (int, error) {
 	}
 
 	t := c.tracker()
-	if !t.IsValid || (t.MaxApproximation.Cmp(big.NewInt(1)) <= 0 && t.MaxApproximation.Cmp(big.NewInt(-1)) >= 0) {
+	if a := t.latest(); a == nil || bigAbs(a.value).Cmp(big.NewInt(1)) <= 0 {
 		if _, err := approx(ctx, c, n-1); err != nil {
 			return 0, err
 		}
 
-		if bigAbs(t.MaxApproximation).Cmp(big.NewInt(1)) <= 0 {
+		if bigAbs(t.latest().value).Cmp(big.NewInt(1)) <= 0 {
 			return math.MinInt, nil
 		}
 	}
@@ -301,9 +300,8 @@ func PreciseSign(ctx context.Context, c Real, p int) (int, error) {
 		return 0, ErrNilReal
 	}
 
-	if t := c.tracker(); t.IsValid {
-		v := t.MaxApproximation.Sign()
-		if v != 0 {
+	if a := c.tracker().latest(); a != nil {
+		if v := a.value.Sign(); v != 0 {
 			return v, nil
 		}
 	}
