@@ -4,4 +4,4 @@ steps:
       - bash
       - -c
       - |
-        go test ./...
+        make test-race
