@@ -11,7 +11,9 @@ func (e precisionOverflowError) Error() string {
 	return "precision overflow"
 }
 
-var PrecisionOverflow error = precisionOverflowError{}
+// ErrPrecisionOverflow is returned when an approximation is requested at a finer
+// precision than the limit carried by the context.
+var ErrPrecisionOverflow error = precisionOverflowError{}
 
 type precisionLimitKey struct{}
 
@@ -31,10 +33,14 @@ func PrecisionLimit(ctx context.Context) (int, bool) {
 	return limit, ok
 }
 
+// CheckPrecisionOverflow returns ErrPrecisionOverflow when p is finer than the
+// precision limit in the context. The limit is a count of bits after the binary
+// point, and finer precision is more negative, so the check fires when p is
+// below the negated limit.
 func CheckPrecisionOverflow(ctx context.Context, p int) error {
 	if limit, ok := PrecisionLimit(ctx); ok && limit >= 0 {
-		if p > limit {
-			return PrecisionOverflow
+		if p < -limit {
+			return ErrPrecisionOverflow
 		}
 	}
 

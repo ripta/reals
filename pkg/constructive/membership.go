@@ -1,6 +1,9 @@
 package constructive
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // Location names where a point sits relative to a closed interval `[Lo, Hi]`.
 // It is the result of the semi-decidable membership predicate Locate.
@@ -35,7 +38,8 @@ func (l Location) String() string {
 }
 
 // Locate reports where x sits relative to the closed interval iv at precision p.
-// It is total: it never diverges and never returns an error.
+// It never diverges. Its only errors are those of approximating x or the bounds,
+// returned as they are with Indeterminate.
 //
 // The two boundary signs `x - Lo` and `Hi - x` decide the four regions. A
 // negative first sign is Below. A negative second sign is Above. Two positive
@@ -43,19 +47,26 @@ func (l Location) String() string {
 // be distinguished from that boundary at p. An exact-boundary point therefore
 // reports Indeterminate here; the exact-rational path in unified resolves it to
 // Inside under the closed-interval semantics.
-func Locate(iv Interval, x Real, p int) Location {
-	lower := PreciseSign(Subtract(x, iv.Lo), p)
-	upper := PreciseSign(Subtract(iv.Hi, x), p)
+func Locate(ctx context.Context, iv Interval, x Real, p int) (Location, error) {
+	lower, err := PreciseSign(ctx, Subtract(x, iv.Lo), p)
+	if err != nil {
+		return Indeterminate, err
+	}
+
+	upper, err := PreciseSign(ctx, Subtract(iv.Hi, x), p)
+	if err != nil {
+		return Indeterminate, err
+	}
 
 	switch {
 	case lower < 0:
-		return Below
+		return Below, nil
 	case upper < 0:
-		return Above
+		return Above, nil
 	case lower > 0 && upper > 0:
-		return Inside
+		return Inside, nil
 	default:
-		return Indeterminate
+		return Indeterminate, nil
 	}
 }
 
@@ -89,28 +100,39 @@ func (d Decision) String() string {
 // interval is empty when Hi < Lo, the state Intersect yields for disjoint inputs.
 // It is the precision-bounded sign of Hi - Lo: negative is empty (Yes), positive
 // is non-empty (No), and zero is Undecided, since a touching-at-a-point interval
-// cannot be distinguished from empty at p.
-func IsEmpty(iv Interval, p int) Decision {
-	switch sign := PreciseSign(Subtract(iv.Hi, iv.Lo), p); {
+// cannot be distinguished from empty at p. Errors from approximation are returned
+// as they are with Undecided.
+func IsEmpty(ctx context.Context, iv Interval, p int) (Decision, error) {
+	sign, err := PreciseSign(ctx, Subtract(iv.Hi, iv.Lo), p)
+	if err != nil {
+		return Undecided, err
+	}
+
+	switch {
 	case sign < 0:
-		return Yes
+		return Yes, nil
 	case sign > 0:
-		return No
+		return No, nil
 	default:
-		return Undecided
+		return Undecided, nil
 	}
 }
 
 // Overlap reports whether a and b share a point at precision p. It composes the
 // total Intersect with the emptiness test: two intervals overlap exactly when
 // their intersection is non-empty.
-func Overlap(a, b Interval, p int) Decision {
-	switch IsEmpty(Intersect(a, b), p) {
+func Overlap(ctx context.Context, a, b Interval, p int) (Decision, error) {
+	d, err := IsEmpty(ctx, Intersect(a, b), p)
+	if err != nil {
+		return Undecided, err
+	}
+
+	switch d {
 	case Yes:
-		return No
+		return No, nil
 	case No:
-		return Yes
+		return Yes, nil
 	default:
-		return Undecided
+		return Undecided, nil
 	}
 }

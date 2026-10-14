@@ -1,10 +1,13 @@
 package unified
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/ripta/reals/pkg/constructive"
 	"github.com/ripta/reals/pkg/rational"
+	"github.com/stretchr/testify/assert"
 )
 
 // irr wraps an irrational constructive real as a unified Real, so its
@@ -90,9 +93,9 @@ var unifiedLocateTests = []unifiedLocateTest{
 func TestUnifiedIntervalLocate(t *testing.T) {
 	for _, test := range unifiedLocateTests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.iv.Locate(test.x, test.p); got != test.expected {
-				t.Errorf("Locate = %v, want %v", got, test.expected)
-			}
+			got, err := test.iv.Locate(testCtx, test.x, test.p)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected, got)
 		})
 	}
 }
@@ -134,9 +137,9 @@ var unifiedIsEmptyTests = []unifiedIsEmptyTest{
 func TestUnifiedIntervalIsEmpty(t *testing.T) {
 	for _, test := range unifiedIsEmptyTests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.iv.IsEmpty(test.p); got != test.expected {
-				t.Errorf("IsEmpty = %v, want %v", got, test.expected)
-			}
+			got, err := test.iv.IsEmpty(testCtx, test.p)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected, got)
 		})
 	}
 }
@@ -175,9 +178,62 @@ var unifiedOverlapTests = []unifiedOverlapTest{
 func TestUnifiedIntervalOverlap(t *testing.T) {
 	for _, test := range unifiedOverlapTests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.a.Overlap(test.b, test.p); got != test.expected {
-				t.Errorf("Overlap = %v, want %v", got, test.expected)
+			got, err := test.a.Overlap(testCtx, test.b, test.p)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected, got)
+		})
+	}
+}
+
+type unifiedCancelledMembershipTest struct {
+	name string
+	run  func(ctx context.Context) error
+}
+
+var unifiedCancelledMembershipTests = []unifiedCancelledMembershipTest{
+	{
+		name: "Locate of an irrational point surfaces the context error",
+		run: func(ctx context.Context) error {
+			iv := NewInterval(rat(1, 1), rat(2, 1))
+			got, err := iv.Locate(ctx, irr(constructive.Sqrt2()), -100)
+			if got != Indeterminate {
+				return fmt.Errorf("Locate = %v, want Indeterminate", got)
 			}
+			return err
+		},
+	},
+	{
+		name: "IsEmpty of an irrational interval surfaces the context error",
+		run: func(ctx context.Context) error {
+			iv := Interval{lo: irr(constructive.Sqrt2()), hi: irr(constructive.Pi())}
+			got, err := iv.IsEmpty(ctx, -100)
+			if got != Undecided {
+				return fmt.Errorf("IsEmpty = %v, want Undecided", got)
+			}
+			return err
+		},
+	},
+	{
+		name: "Overlap of irrational intervals surfaces the context error",
+		run: func(ctx context.Context) error {
+			a := Interval{lo: irr(constructive.Sqrt2()), hi: irr(constructive.Pi())}
+			b := NewInterval(rat(1, 1), rat(4, 1))
+			got, err := a.Overlap(ctx, b, -100)
+			if got != Undecided {
+				return fmt.Errorf("Overlap = %v, want Undecided", got)
+			}
+			return err
+		},
+	},
+}
+
+func TestUnifiedMembershipCancelled(t *testing.T) {
+	for _, test := range unifiedCancelledMembershipTests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+
+			assert.ErrorIs(t, test.run(ctx), context.Canceled)
 		})
 	}
 }

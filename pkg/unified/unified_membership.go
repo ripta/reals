@@ -1,6 +1,8 @@
 package unified
 
 import (
+	"context"
+
 	"github.com/ripta/reals/pkg/constructive"
 )
 
@@ -30,38 +32,55 @@ const (
 // both operands are exact rationals, cr == constructive.One(), the rationals
 // compare exactly. Otherwise it falls back to the budgeted PreciseSign at
 // precision p, which returns 0 when the operands are indistinguishable there.
-func signOfDiff(a, b *Real, p int) (sign int, exact bool) {
+// Errors from approximating the difference are returned as they are.
+func signOfDiff(ctx context.Context, a, b *Real, p int) (sign int, exact bool, err error) {
 	if a.cr == constructive.One() && b.cr == constructive.One() {
-		return a.rr.Cmp(b.rr), true
+		return a.rr.Cmp(b.rr), true, nil
 	}
-	return constructive.PreciseSign(constructive.Subtract(a.Constructive(), b.Constructive()), p), false
+
+	diff := constructive.Subtract(a.Constructive(), b.Constructive())
+
+	v, err := constructive.PreciseSign(ctx, diff, p)
+	if err != nil {
+		return 0, false, err
+	}
+
+	return v, false, nil
 }
 
 // Locate reports where x sits relative to the closed interval iv at precision p.
-// It is total: it never diverges and never returns an error.
+// It never diverges. On an approximation error, which includes the context
+// error, it returns Indeterminate beside that error.
 //
 // Each boundary sign is decided exactly when both of its operands are exact
 // rationals, falling back to the budgeted PreciseSign otherwise. An exactly-zero
 // sign means x lies exactly on that endpoint, which is Inside under closed
 // semantics. This is the refinement the constructive path can only report as
 // Indeterminate.
-func (iv Interval) Locate(x *Real, p int) Location {
-	lower, lowerExact := signOfDiff(x, iv.lo, p)
-	upper, upperExact := signOfDiff(iv.hi, x, p)
+func (iv Interval) Locate(ctx context.Context, x *Real, p int) (Location, error) {
+	lower, lowerExact, err := signOfDiff(ctx, x, iv.lo, p)
+	if err != nil {
+		return Indeterminate, err
+	}
+
+	upper, upperExact, err := signOfDiff(ctx, iv.hi, x, p)
+	if err != nil {
+		return Indeterminate, err
+	}
 
 	switch {
 	case lower < 0:
-		return Below
+		return Below, nil
 	case upper < 0:
-		return Above
+		return Above, nil
 	case lowerExact && lower == 0:
-		return Inside
+		return Inside, nil
 	case upperExact && upper == 0:
-		return Inside
+		return Inside, nil
 	case lower > 0 && upper > 0:
-		return Inside
+		return Inside, nil
 	default:
-		return Indeterminate
+		return Indeterminate, nil
 	}
 }
 
@@ -69,18 +88,23 @@ func (iv Interval) Locate(x *Real, p int) Location {
 // the sign of hi - lo, decided exactly when both endpoints are exact rationals.
 // An interval is empty when hi < lo. A degenerate hi == lo is the single-point
 // interval, non-empty under closed semantics, so an exact zero reports No where
-// the budgeted path can only report Undecided.
-func (iv Interval) IsEmpty(p int) Decision {
-	sign, exact := signOfDiff(iv.hi, iv.lo, p)
+// the budgeted path can only report Undecided. On an approximation error it
+// returns Undecided beside that error.
+func (iv Interval) IsEmpty(ctx context.Context, p int) (Decision, error) {
+	sign, exact, err := signOfDiff(ctx, iv.hi, iv.lo, p)
+	if err != nil {
+		return Undecided, err
+	}
+
 	switch {
 	case sign < 0:
-		return Yes
+		return Yes, nil
 	case sign > 0:
-		return No
+		return No, nil
 	case exact:
-		return No
+		return No, nil
 	default:
-		return Undecided
+		return Undecided, nil
 	}
 }
 
@@ -88,14 +112,20 @@ func (iv Interval) IsEmpty(p int) Decision {
 // the total Intersect with the emptiness test: two intervals overlap exactly when
 // their intersection is non-empty. Intersect routes through the constructive
 // Min/Max core, which fuses away rational visibility, so overlap is budgeted even
-// when the original endpoints are exact rationals.
-func (iv Interval) Overlap(other Interval, p int) Decision {
-	switch iv.Intersect(other).IsEmpty(p) {
+// when the original endpoints are exact rationals. On an approximation error it
+// returns Undecided beside that error.
+func (iv Interval) Overlap(ctx context.Context, other Interval, p int) (Decision, error) {
+	empty, err := iv.Intersect(other).IsEmpty(ctx, p)
+	if err != nil {
+		return Undecided, err
+	}
+
+	switch empty {
 	case Yes:
-		return No
+		return No, nil
 	case No:
-		return Yes
+		return Yes, nil
 	default:
-		return Undecided
+		return Undecided, nil
 	}
 }

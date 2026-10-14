@@ -44,12 +44,12 @@ func assertEqualAtPrecision(t *testing.T, expected, actual *Real, precision int)
 	t.Helper()
 	a := expected.Constructive()
 	b := actual.Constructive()
-	if result := constructive.PreciseCmp(a, b, precision); result != 0 {
+	if result := mustPreciseCmp(t, a, b, precision); result != 0 {
 		t.Errorf("expected [1] to be equal to [2] at precision %d\n[1]: %s\n     %#v\n[2]: %s\n     %#v",
 			precision,
-			constructive.Text(a, -precision, 10),
+			mustText(t, a, -precision, 10),
 			a,
-			constructive.Text(b, -precision, 10),
+			mustText(t, b, -precision, 10),
 			b)
 	}
 }
@@ -107,10 +107,10 @@ func TestConstructive(t *testing.T) {
 	for _, test := range constructiveTests {
 		t.Run(test.name, func(t *testing.T) {
 			actual := test.input.Constructive()
-			if result := constructive.PreciseCmp(test.expected, actual, -100); result != 0 {
+			if result := mustPreciseCmp(t, test.expected, actual, -100); result != 0 {
 				t.Errorf("expected %s, got %s",
-					constructive.Text(test.expected, 100, 10),
-					constructive.Text(actual, 100, 10))
+					mustText(t, test.expected, 100, 10),
+					mustText(t, actual, 100, 10))
 			}
 		})
 	}
@@ -248,7 +248,7 @@ func TestSubtract(t *testing.T) {
 		abConst := ab.Constructive()
 		baConst := ba.Constructive()
 
-		if constructive.PreciseCmp(abConst, baConst, -100) == 0 {
+		if mustPreciseCmp(t, abConst, baConst, -100) == 0 {
 			t.Errorf("expected a-b != b-a, but got equal values")
 		}
 
@@ -415,7 +415,8 @@ func TestDivide(t *testing.T) {
 		den := int64(1) << k
 		a := New(constructive.One(), rational.New64(num, 1))
 		b := New(constructive.One(), rational.New64(den, 1))
-		result := a.Divide(b).Floor(-4)
+		result, err := a.Divide(b).Floor(testCtx, -4)
+		assert.NoError(t, err)
 		assertEqualAtPrecision(t, Zero(), result, -100)
 	})
 }

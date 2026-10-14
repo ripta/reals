@@ -1,6 +1,7 @@
 package constructive
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 )
@@ -28,9 +29,9 @@ func newArithmeticGeometricMean(a, b Real) Real {
 	}
 }
 
-func (c *arithmeticGeometricMean) approximate(p int) *big.Int {
+func (c *arithmeticGeometricMean) approximate(ctx context.Context, p int) (*big.Int, error) {
 	if p >= 1 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	// quadratic convergence, so we need roughly log2(-p) iterations, plus some
@@ -41,8 +42,15 @@ func (c *arithmeticGeometricMean) approximate(p int) *big.Int {
 	aReal := c.a
 	bReal := c.b
 	for i := 0; i < maxIters; i++ {
-		aApprox := Approximate(aReal, calcPrec)
-		bApprox := Approximate(bReal, calcPrec)
+		aApprox, err := approx(ctx, aReal, calcPrec)
+		if err != nil {
+			return nil, err
+		}
+
+		bApprox, err := approx(ctx, bReal, calcPrec)
+		if err != nil {
+			return nil, err
+		}
 
 		// Check convergence: |aₙ - bₙ| < threshold
 		// at calcPrec, a difference of 1 represents 2^calcPrec,
@@ -60,7 +68,7 @@ func (c *arithmeticGeometricMean) approximate(p int) *big.Int {
 		aReal, bReal = aNext, bNext
 	}
 
-	return Approximate(aReal, p)
+	return approx(ctx, aReal, p)
 }
 
 func (c *arithmeticGeometricMean) asConstruction() string {

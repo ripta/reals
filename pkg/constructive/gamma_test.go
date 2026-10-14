@@ -1,7 +1,10 @@
 package constructive
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -50,4 +53,33 @@ func TestGammaRecurrence(t *testing.T) {
 
 func TestGammaAsConstruction(t *testing.T) {
 	assert.Equal(t, "Gamma(Int(3))", Gamma(FromInt(3)).asConstruction())
+}
+
+type gammaPoleTest struct {
+	name  string
+	input Real
+}
+
+var gammaPoleTests = []gammaPoleTest{
+	{name: "Gamma(0)", input: FromInt(0)},
+	{name: "Gamma(-1)", input: FromInt(-1)},
+	{name: "Gamma(-4)", input: FromInt(-4)},
+	{name: "Gamma(1-1)", input: Subtract(One(), One())},
+}
+
+// TestGammaPoleIsInterruptible checks that a pole ends in an error instead of a
+// value or a hang. The reflection divides by a zero sine, which ends in
+// ErrUndecided at the precision bound or in the context's error before that.
+func TestGammaPoleIsInterruptible(t *testing.T) {
+	for _, test := range gammaPoleTests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(testCtx, 200*time.Millisecond)
+			defer cancel()
+
+			_, err := Approximate(ctx, Gamma(test.input), -20)
+			if !errors.Is(err, ErrUndecided) && !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("got error %v, want ErrUndecided or context.DeadlineExceeded", err)
+			}
+		})
+	}
 }

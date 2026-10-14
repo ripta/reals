@@ -1,6 +1,7 @@
 package constructive
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/big"
@@ -27,12 +28,10 @@ func IsIntWithinBitTolerance(value, tolerance int) bool {
 // Text converts a Real number to a string representation.
 // The function takes a Real number, a non-negative decimal
 // precision, and a radix (base) for the conversion.
-func Text(c Real, dec, radix int) (text string) {
-	defer func() {
-		if err := recover(); err != nil {
-			text = fmt.Sprintf("<undefined: %v>", err)
-		}
-	}()
+func Text(ctx context.Context, c Real, dec, radix int) (string, error) {
+	if c == nil {
+		return "", ErrNilReal
+	}
 
 	var sc Real
 	if radix == 16 {
@@ -42,7 +41,11 @@ func Text(c Real, dec, radix int) (text string) {
 		sc = Multiply(c, newInteger(sf))
 	}
 
-	si := Approximate(sc, 0)
+	si, err := approx(ctx, sc, 0)
+	if err != nil {
+		return "", err
+	}
+
 	ss := bigAbs(si).Text(radix)
 
 	out := ss
@@ -58,24 +61,52 @@ func Text(c Real, dec, radix int) (text string) {
 	if si.Sign() < 0 {
 		out = "-" + out
 	}
-	return out
+	return out, nil
 }
 
 // Approximate computes the approximation of a Real number,
 // given a precision p. When possible, the approximation is cached
 // to save time on future calls.
-func Approximate(c Real, p int) *big.Int {
+//
+// An error from anywhere in the tree is returned unchanged. A failed
+// approximation is not cached.
+func Approximate(ctx context.Context, c Real, p int) (*big.Int, error) {
+	return approx(ctx, c, p)
+}
+
+// approx is the single path through which every approximation runs, whether it
+// starts at a public entry point or at a node asking for a child. Funneling them
+// here means the context, the precision limit, and the cache are handled once.
+// Only a successful approximation is stored, because a cancellation belongs to
+// one call and not to the value.
+func approx(ctx context.Context, c Real, p int) (*big.Int, error) {
+	if c == nil {
+		return nil, ErrNilReal
+	}
+
 	if !IsPrecisionValid(p) {
-		return nil
+		return nil, ErrInvalidPrecision
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := CheckPrecisionOverflow(ctx, p); err != nil {
+		return nil, err
 	}
 
 	t := c.tracker()
 	if s, ok := t.Get(p); ok {
-		return s
+		return s, nil
 	}
 
-	s := c.approximate(p)
-	return t.Set(p, s)
+	s, err := c.approximate(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.Set(p, s), nil
 }
 
 // AsConstruction returns a string representing the construction of the
@@ -135,99 +166,176 @@ func AsConstructionIndent(c Real, indent string) string {
 	return out.String()
 }
 
-// Cmp compares two Real numbers a and b with higher and higher
-// precision until a non-zero result is found. It returns 1 if `a > b`,
-// -1 if `a < b`.
+// Cmp compares two Real numbers a and b with higher and higher precision until a
+// non-zero result is found. It returns 1 if `a > b` and -1 if `a < b`.
 //
-// This function never terminates if `a == b`; use PreciseCmp instead.
-func Cmp(a, b Real) int {
+// If a == b, no precision ever tells them apart. Cmp then runs until ctx is done and
+// returns its error, or until the next precision leaves the valid range and returns
+// ErrUndecided. ctx is checked before each doubling. Use PreciseCmp to bound the work
+// instead. Errors from approximating a or b are returned as they are.
+func Cmp(ctx context.Context, a, b Real) (int, error) {
 	for p := -20; ; p *= 2 {
-		if !IsPrecisionValid(p) {
-			return 0
+		if err := ctx.Err(); err != nil {
+			return 0, err
 		}
-		if v := PreciseCmp(a, b, p); v != 0 {
-			return v
+
+		if !IsPrecisionValid(p) {
+			return 0, ErrUndecided
+		}
+
+		v, err := PreciseCmp(ctx, a, b, p)
+		if err != nil {
+			return 0, err
+		}
+		if v != 0 {
+			return v, nil
 		}
 	}
 }
 
-// PreciseCmp compares two Real numbers a and b with a precision p.
-func PreciseCmp(a, b Real, p int) int {
+// PreciseCmp compares two Real numbers a and b with a precision p. It returns 0 when
+// they are indistinguishable at p. A nil operand returns ErrNilReal, and errors from
+// approximating an operand are returned as they are.
+func PreciseCmp(ctx context.Context, a, b Real, p int) (int, error) {
 	if a == nil || b == nil {
-		return 0
+		return 0, ErrNilReal
 	}
 
-	ia := Approximate(a, p-1)
-	ib := Approximate(b, p-1)
-	if ia == nil || ib == nil {
-		return 0
+	ia, err := approx(ctx, a, p-1)
+	if err != nil {
+		return 0, err
+	}
+
+	ib, err := approx(ctx, b, p-1)
+	if err != nil {
+		return 0, err
 	}
 
 	if ia.Cmp(bigAdd(ib, big.NewInt(1))) > 0 {
-		return 1
+		return 1, nil
 	}
 	if ia.Cmp(bigSub(ib, big.NewInt(1))) < 0 {
-		return -1
+		return -1, nil
 	}
 
-	return 0
+	return 0, nil
 }
 
 // Real represents a constructive real number.
+//
+// A Real is safe for concurrent use. Goroutines may approximate the same value, or
+// trees that share it, at the same time.
 type Real interface {
-	approximate(int) *big.Int
+	approximate(ctx context.Context, p int) (*big.Int, error)
 	asConstruction() string
 	tracker() *precisionTracker
 }
 
 // knownMSD computes the position of the most significant digit (MSD). When
-// the MSD is n, then 2^(n-1) < |c| < 2^(n+1).
-func knownMSD(c Real) int {
-	t := c.tracker()
-	if t.MaxApproximation.Sign() >= 0 {
-		return t.MinPrecision + t.MaxApproximation.BitLen() - 1
+// the MSD is n, then 2^(n-1) < |c| < 2^(n+1). It reads only what the tracker
+// already holds, so it fails when c has not been approximated yet.
+func knownMSD(c Real) (int, error) {
+	a := c.tracker().latest()
+	if a == nil {
+		return 0, errNoKnownMSD
 	}
 
-	return t.MinPrecision + bigNeg(t.MaxApproximation).BitLen() - 1
+	return a.precision + bigAbs(a.value).BitLen() - 1, nil
 }
 
-func msd(c Real, n int) int {
+func msd(ctx context.Context, c Real, n int) (int, error) {
+	if c == nil {
+		return 0, ErrNilReal
+	}
+
 	t := c.tracker()
-	if !t.IsValid || (t.MaxApproximation.Cmp(big.NewInt(1)) <= 0 && t.MaxApproximation.Cmp(big.NewInt(-1)) >= 0) {
-		_ = Approximate(c, n-1) // for side effects :(
-		if bigAbs(t.MaxApproximation).Cmp(big.NewInt(1)) <= 0 {
-			return math.MinInt
+	if a := t.latest(); a == nil || bigAbs(a.value).Cmp(big.NewInt(1)) <= 0 {
+		if _, err := approx(ctx, c, n-1); err != nil {
+			return 0, err
+		}
+
+		if bigAbs(t.latest().value).Cmp(big.NewInt(1)) <= 0 {
+			return math.MinInt, nil
 		}
 	}
 
 	return knownMSD(c)
 }
 
-// PreciseSign computes the sign of a Real number c given precision p.
-func PreciseSign(c Real, p int) int {
-	if t := c.tracker(); t.IsValid {
-		v := t.MaxApproximation.Sign()
-		if v != 0 {
-			return v
+// decidedMSD returns the most significant digit of c, refining past n until c is
+// known to be nonzero. It checks the context before each refinement and gives up
+// with ErrUndecided once the next precision is outside the valid range, which is
+// where a value equal to zero ends up.
+func decidedMSD(ctx context.Context, c Real, n int) (int, error) {
+	for {
+		m, err := msd(ctx, c, n)
+		if err != nil {
+			return 0, err
+		}
+
+		if m != math.MinInt {
+			return m, nil
+		}
+
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		if n > 0 {
+			n = 0
+		}
+
+		n = n*2 - 20
+		if !IsPrecisionValid(n - 2) {
+			return 0, ErrUndecided
+		}
+	}
+}
+
+// PreciseSign computes the sign of a Real number c given precision p. It returns 0
+// when c is indistinguishable from zero at p. A nil c returns ErrNilReal, and errors
+// from approximating c are returned as they are.
+func PreciseSign(ctx context.Context, c Real, p int) (int, error) {
+	if c == nil {
+		return 0, ErrNilReal
+	}
+
+	if a := c.tracker().latest(); a != nil {
+		if v := a.value.Sign(); v != 0 {
+			return v, nil
 		}
 	}
 
-	ic := Approximate(c, p-1)
-	if ic == nil {
-		return 0
+	ic, err := approx(ctx, c, p-1)
+	if err != nil {
+		return 0, err
 	}
 
-	return ic.Sign()
+	return ic.Sign(), nil
 }
 
-// Sign computes the sign of a Real number c. It returns 1 if c > 0,
-// or -1 if c < 0.
+// Sign computes the sign of a Real number c. It returns 1 if c > 0 and -1 if c < 0.
 //
-// This function never terminates if c == 0; use PreciseSign instead.
-func Sign(c Real) int {
+// If c == 0, no precision ever shows a nonzero sign. Sign then runs until ctx is done
+// and returns its error, or until the next precision leaves the valid range and
+// returns ErrUndecided. ctx is checked before each doubling. Use PreciseSign to bound
+// the work instead. Errors from approximating c are returned as they are.
+func Sign(ctx context.Context, c Real) (int, error) {
 	for p := -20; ; p *= 2 {
-		if r := PreciseSign(c, p-1); r != 0 {
-			return r
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		if !IsPrecisionValid(p - 2) {
+			return 0, ErrUndecided
+		}
+
+		r, err := PreciseSign(ctx, c, p-1)
+		if err != nil {
+			return 0, err
+		}
+		if r != 0 {
+			return r, nil
 		}
 	}
 }
@@ -367,8 +475,8 @@ func newInteger(i *big.Int) Real {
 	}
 }
 
-func (c *constructiveInteger) approximate(p int) *big.Int {
-	return scale(c.i, -p)
+func (c *constructiveInteger) approximate(_ context.Context, p int) (*big.Int, error) {
+	return scale(c.i, -p), nil
 }
 
 func (c *constructiveInteger) asConstruction() string {
@@ -398,9 +506,18 @@ func newAddition(a, b Real) Real {
 	}
 }
 
-func (c *constructiveAddition) approximate(p int) *big.Int {
-	sum := bigAdd(Approximate(c.a, p-2), Approximate(c.b, p-2))
-	return scale(sum, -2)
+func (c *constructiveAddition) approximate(ctx context.Context, p int) (*big.Int, error) {
+	ia, err := approx(ctx, c.a, p-2)
+	if err != nil {
+		return nil, err
+	}
+
+	ib, err := approx(ctx, c.b, p-2)
+	if err != nil {
+		return nil, err
+	}
+
+	return scale(bigAdd(ia, ib), -2), nil
 }
 
 func (c *constructiveAddition) asConstruction() string {
@@ -430,29 +547,56 @@ func newMultiplication(a, b Real) Real {
 	}
 }
 
-func (c *constructiveMultiplication) approximate(p int) *big.Int {
+func (c *constructiveMultiplication) approximate(ctx context.Context, p int) (*big.Int, error) {
+	a, b := c.a, c.b
+
 	hp := (p >> 1) - 1
-	ma := msd(c.a, hp)
+	ma, err := msd(ctx, a, hp)
+	if err != nil {
+		return nil, err
+	}
+
+	// The operand with a known msd goes first, so the swap moves the operands and
+	// not only their msds. The second operand is approximated relative to the first.
+	// When it rounds to zero, so does the product, and the first is never refined.
+	//
+	// Otherwise the first is approximated relative to the second. A tiny second
+	// operand then keeps the first one coarse.
 	if ma == math.MinInt {
-		mb := msd(c.b, hp)
-		if mb == math.MinInt {
-			return big.NewInt(0)
+		ma, err = msd(ctx, b, hp)
+		if err != nil {
+			return nil, err
 		}
 
-		ma, mb = mb, ma
+		if ma == math.MinInt {
+			return big.NewInt(0), nil
+		}
+
+		a, b = b, a
 	}
 
 	p2 := p - ma - 3
-	ib := Approximate(c.b, p2)
-	if ib.Sign() == 0 {
-		return big.NewInt(0)
+	ib, err := approx(ctx, b, p2)
+	if err != nil {
+		return nil, err
 	}
 
-	mb := knownMSD(c.b)
-	p1 := p - mb - 3
-	ia := Approximate(c.a, p1)
+	if ib.Sign() == 0 {
+		return big.NewInt(0), nil
+	}
 
-	return scale(bigMul(ia, ib), p1+p2-p)
+	mb, err := knownMSD(b)
+	if err != nil {
+		return nil, err
+	}
+
+	p1 := p - mb - 3
+	ia, err := approx(ctx, a, p1)
+	if err != nil {
+		return nil, err
+	}
+
+	return scale(bigMul(ia, ib), p1+p2-p), nil
 }
 
 func (c *constructiveMultiplication) asConstruction() string {
@@ -481,8 +625,12 @@ func newMultiplicativeInverse(r Real) Real {
 	}
 }
 
-func (c *constructiveMultiplicativeInverse) approximate(p int) *big.Int {
-	mr := msd(c.r, p)
+func (c *constructiveMultiplicativeInverse) approximate(ctx context.Context, p int) (*big.Int, error) {
+	mr, err := decidedMSD(ctx, c.r, p)
+	if err != nil {
+		return nil, err
+	}
+
 	ir := 1 - mr
 
 	digits := ir - p + 3
@@ -490,19 +638,27 @@ func (c *constructiveMultiplicativeInverse) approximate(p int) *big.Int {
 
 	lsf := -p - pn
 	if lsf < 0 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	dividend := bigLsh(big.NewInt(1), uint(lsf))
-	divisor := Approximate(c.r, pn)
+	divisor, err := approx(ctx, c.r, pn)
+	if err != nil {
+		return nil, err
+	}
+
 	absolute := bigAbs(divisor)
+	if absolute.Sign() == 0 {
+		return nil, ErrUndecided
+	}
+
 	adj := bigAdd(dividend, bigRsh(absolute, 1))
 
 	res := bigDiv(adj, absolute)
 	if divisor.Sign() < 0 {
-		return bigNeg(res)
+		return bigNeg(res), nil
 	}
-	return res
+	return res, nil
 }
 
 func (c *constructiveMultiplicativeInverse) asConstruction() string {
@@ -532,8 +688,8 @@ func newShift(r Real, n int) Real {
 	}
 }
 
-func (c *constructiveShift) approximate(p int) *big.Int {
-	return Approximate(c.r, p-c.n)
+func (c *constructiveShift) approximate(ctx context.Context, p int) (*big.Int, error) {
+	return approx(ctx, c.r, p-c.n)
 }
 
 func (c *constructiveShift) asConstruction() string {
@@ -566,8 +722,13 @@ func newNegation(r Real) Real {
 	}
 }
 
-func (c *constructiveNegation) approximate(p int) *big.Int {
-	return bigNeg(Approximate(c.r, p))
+func (c *constructiveNegation) approximate(ctx context.Context, p int) (*big.Int, error) {
+	ir, err := approx(ctx, c.r, p)
+	if err != nil {
+		return nil, err
+	}
+
+	return bigNeg(ir), nil
 }
 
 func (c *constructiveNegation) asConstruction() string {
@@ -577,6 +738,14 @@ func (c *constructiveNegation) asConstruction() string {
 // Abs computes the absolute value of c.
 func Abs(c Real) Real {
 	return newCondsign(c, Negate(c), c)
+}
+
+// CondSign selects between a and b by the sign of r. It is a if r < 0 and b if
+// r > 0. When r is zero, either is acceptable, and the node returns a value
+// within the approximation error of both. The sign is decided lazily, at
+// approximation time.
+func CondSign(r, a, b Real) Real {
+	return newCondsign(r, a, b)
 }
 
 // Max computes the maximum of a and b.
@@ -591,72 +760,121 @@ func Min(a, b Real) Real {
 
 // floorInt computes the greatest integer less than or equal to c at precision p.
 // The nearest integer n to c lies within half a unit, so the floor is n when
-// c >= n and n-1 otherwise; the boundary is decided with PreciseSign rather than
-// the non-terminating Sign.
-func floorInt(c Real, p int) *big.Int {
-	n := scale(Approximate(c, p), p)
-	if PreciseSign(Subtract(c, FromBigInt(n)), p) < 0 {
-		return bigSub(n, big.NewInt(1))
+// c >= n and n-1 otherwise; the boundary is decided with preciseSign rather than
+// the non-terminating sign.
+func floorInt(ctx context.Context, c Real, p int) (*big.Int, error) {
+	ic, err := approx(ctx, c, p)
+	if err != nil {
+		return nil, err
 	}
 
-	return n
+	n := scale(ic, p)
+	sg, err := PreciseSign(ctx, Subtract(c, FromBigInt(n)), p)
+	if err != nil {
+		return nil, err
+	}
+
+	if sg < 0 {
+		return bigSub(n, big.NewInt(1)), nil
+	}
+
+	return n, nil
 }
 
 // roundParts returns the floor f of c and the sign of 2*(c-f) - 1, the
 // fractional part compared against one half, both at precision p.
-func roundParts(c Real, p int) (*big.Int, int) {
-	f := floorInt(c, p)
-	frac := Subtract(c, FromBigInt(f))
+func roundParts(ctx context.Context, c Real, p int) (*big.Int, int, error) {
+	f, err := floorInt(ctx, c, p)
+	if err != nil {
+		return nil, 0, err
+	}
 
-	return f, PreciseCmp(ShiftLeft(frac, 1), One(), p)
+	frac := Subtract(c, FromBigInt(f))
+	half, err := PreciseCmp(ctx, ShiftLeft(frac, 1), One(), p)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return f, half, nil
 }
 
 // Floor computes the greatest integer less than or equal to c, deciding the
 // integer boundary at precision p. A value indistinguishable from an integer at
 // p snaps to that integer; an exact rational is decided exactly regardless of p.
-func Floor(c Real, p int) Real {
-	return FromBigInt(floorInt(c, p))
+//
+// Errors from approximating c are returned as they are, with a nil Real.
+func Floor(ctx context.Context, c Real, p int) (Real, error) {
+	f, err := floorInt(ctx, c, p)
+	if err != nil {
+		return nil, err
+	}
+
+	return FromBigInt(f), nil
 }
 
 // Ceil computes the least integer greater than or equal to c, deciding the
 // integer boundary at precision p.
-func Ceil(c Real, p int) Real {
-	return FromBigInt(bigNeg(floorInt(Negate(c), p)))
+//
+// Errors from approximating c are returned as they are, with a nil Real.
+func Ceil(ctx context.Context, c Real, p int) (Real, error) {
+	f, err := floorInt(ctx, Negate(c), p)
+	if err != nil {
+		return nil, err
+	}
+
+	return FromBigInt(bigNeg(f)), nil
 }
 
 // Round computes the nearest integer to c, rounding half away from zero, deciding
 // the integer boundary at precision p. An exact halfway tie is not finitely
 // decidable, so a value indistinguishable from a half-integer at p is treated as
 // a tie.
-func Round(c Real, p int) Real {
-	f, half := roundParts(c, p)
+//
+// Errors from approximating c are returned as they are, with a nil Real.
+func Round(ctx context.Context, c Real, p int) (Real, error) {
+	f, half, err := roundParts(ctx, c, p)
+	if err != nil {
+		return nil, err
+	}
+
 	switch {
 	case half < 0:
-		return FromBigInt(f)
+		return FromBigInt(f), nil
 	case half > 0:
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	default:
-		if PreciseSign(c, p) < 0 {
-			return FromBigInt(f)
+		sg, err := PreciseSign(ctx, c, p)
+		if err != nil {
+			return nil, err
 		}
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+
+		if sg < 0 {
+			return FromBigInt(f), nil
+		}
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	}
 }
 
 // RoundToEven computes the nearest integer to c, rounding ties to even, deciding
 // the integer boundary at precision p.
-func RoundToEven(c Real, p int) Real {
-	f, half := roundParts(c, p)
+//
+// Errors from approximating c are returned as they are, with a nil Real.
+func RoundToEven(ctx context.Context, c Real, p int) (Real, error) {
+	f, half, err := roundParts(ctx, c, p)
+	if err != nil {
+		return nil, err
+	}
+
 	switch {
 	case half < 0:
-		return FromBigInt(f)
+		return FromBigInt(f), nil
 	case half > 0:
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	default:
 		if f.Bit(0) == 0 {
-			return FromBigInt(f)
+			return FromBigInt(f), nil
 		}
-		return FromBigInt(bigAdd(f, big.NewInt(1)))
+		return FromBigInt(bigAdd(f, big.NewInt(1))), nil
 	}
 }
 
@@ -675,27 +893,45 @@ func newCondsign(r, a, b Real) Real {
 	}
 }
 
-func (c *constructiveCondsign) approximate(p int) *big.Int {
-	switch sign := Approximate(c.r, -20).Sign(); {
-	case sign < 0:
-		return Approximate(c.a, p)
-	case sign > 0:
-		return Approximate(c.b, p)
+func (c *constructiveCondsign) approximate(ctx context.Context, p int) (*big.Int, error) {
+	ir, err := approx(ctx, c.r, -20)
+	if err != nil {
+		return nil, err
+	}
+
+	switch ir.Sign() {
+	case -1:
+		return approx(ctx, c.a, p)
+	case 1:
+		return approx(ctx, c.b, p)
 	default:
 	}
 
-	ia := Approximate(c.a, p-1)
-	ib := Approximate(c.b, p-1)
+	ia, err := approx(ctx, c.a, p-1)
+	if err != nil {
+		return nil, err
+	}
+
+	ib, err := approx(ctx, c.b, p-1)
+	if err != nil {
+		return nil, err
+	}
+
 	delta := bigAbs(bigSub(ia, ib))
 	if delta.Cmp(big.NewInt(1)) <= 0 {
-		return scale(ia, -1)
+		return scale(ia, -1), nil
 	}
 
-	if Sign(c.r) < 0 {
-		return scale(ia, -1)
+	sg, err := Sign(ctx, c.r)
+	if err != nil {
+		return nil, err
 	}
 
-	return scale(ib, -1)
+	if sg < 0 {
+		return scale(ia, -1), nil
+	}
+
+	return scale(ib, -1), nil
 }
 
 func (c *constructiveCondsign) asConstruction() string {
@@ -703,18 +939,23 @@ func (c *constructiveCondsign) asConstruction() string {
 }
 
 // Exp computes the e^c.
+//
+// The range reduction is chosen on the first approximation, not here.
 func Exp(c Real) Real {
-	rough := Approximate(c, -3)
+	return newDeferredReduction("Exp", c, -3, reduceExp)
+}
+
+func reduceExp(c Real, rough *big.Int) (Real, error) {
 	// e^-c = 1/e^c
 	if rough.Sign() < 0 {
-		return Inverse(Exp(Negate(c)))
+		return Inverse(Exp(Negate(c))), nil
 	}
 
 	if rough.Cmp(big.NewInt(2)) > 0 {
-		return Square(Exp(ShiftRight(c, 1)))
+		return Square(Exp(ShiftRight(c, 1))), nil
 	}
 
-	return newPrescaledExponential(c)
+	return newPrescaledExponential(c), nil
 }
 
 type prescaledExponential struct {
@@ -734,15 +975,18 @@ func newPrescaledExponential(c Real) Real {
 	}
 }
 
-func (c *prescaledExponential) approximate(p int) *big.Int {
+func (c *prescaledExponential) approximate(ctx context.Context, p int) (*big.Int, error) {
 	if p >= 1 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	iters := -p/2 + 2
 	calcPrec := p - boundLog2(2*iters) - 4
 	opPrec := p - 3
-	opAppr := Approximate(c.r, opPrec)
+	opAppr, err := approx(ctx, c.r, opPrec)
+	if err != nil {
+		return nil, err
+	}
 
 	// Start with term = sum = 1
 	term := bigLsh(big.NewInt(1), uint(-calcPrec))
@@ -759,25 +1003,36 @@ func (c *prescaledExponential) approximate(p int) *big.Int {
 		sum = bigAdd(sum, term)
 	}
 
-	return scale(sum, calcPrec-p)
+	return scale(sum, calcPrec-p), nil
 }
 
 func (c *prescaledExponential) asConstruction() string {
 	return fmt.Sprintf("Pow(E, %s)", c.r.asConstruction())
 }
 
+// Ln computes the natural logarithm of c.
+//
+// An argument decided to be negative is reported as ErrNonPositive when the
+// result is first approximated. The range reduction is chosen then, not here.
+// Zero cannot be decided in bounded work, so it ends in ErrUndecided or in the
+// context error.
 func Ln(c Real) Real {
-	rough := Approximate(c, -4)
+	return newDeferredReduction("Ln", c, -4, reduceLn)
+}
+
+func reduceLn(c Real, rough *big.Int) (Real, error) {
 	if rough.Sign() < 0 {
-		return nil
+		return nil, ErrNonPositive
 	}
+
 	if rough.Cmp(big.NewInt(8)) < 0 {
-		return Negate(Ln(Inverse(c)))
+		return Negate(Ln(Inverse(c))), nil
 	}
 	if rough.Cmp(big.NewInt(24)) > 0 {
-		return ShiftLeft(Ln(Sqrt(Sqrt(c))), 2)
+		return ShiftLeft(Ln(Sqrt(Sqrt(c))), 2), nil
 	}
-	return SimpleLn(c)
+
+	return SimpleLn(c), nil
 }
 
 // SimpleLn computes the natural logarithm of `c`, for `1 < |c| < 2`.
@@ -796,15 +1051,18 @@ func newPrescaledNaturalLog(c Real) Real {
 	}
 }
 
-func (c *prescaledNaturalLog) approximate(p int) *big.Int {
+func (c *prescaledNaturalLog) approximate(ctx context.Context, p int) (*big.Int, error) {
 	if p >= 0 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	iters := -p - 1
 	calcPrec := p - boundLog2(2*iters) - 4
 	opPrec := p - 3
-	opAppr := Approximate(c.r, opPrec)
+	opAppr, err := approx(ctx, c.r, opPrec)
+	if err != nil {
+		return nil, err
+	}
 
 	xToTheN := scale(opAppr, opPrec-calcPrec)
 	term := xToTheN
@@ -819,7 +1077,7 @@ func (c *prescaledNaturalLog) approximate(p int) *big.Int {
 		term = bigDiv(xToTheN, big.NewInt(sign*n))
 		sum = bigAdd(sum, term)
 	}
-	return scale(sum, calcPrec-p)
+	return scale(sum, calcPrec-p), nil
 }
 
 func (c *prescaledNaturalLog) asConstruction() string {
@@ -837,15 +1095,19 @@ func newIntegralArctan(c Real) Real {
 	}
 }
 
-func (c *integralArctan) approximate(p int) *big.Int {
+func (c *integralArctan) approximate(ctx context.Context, p int) (*big.Int, error) {
 	if p >= 1 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	iters := -p/2 + 2
 	calcPrec := p - boundLog2(2*iters) - 4
 
-	ia := Approximate(c.a, 0)
+	ia, err := approx(ctx, c.a, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	isq := bigMul(ia, ia)
 
 	power := bigDiv(bigLsh(big.NewInt(1), uint(-calcPrec)), ia)
@@ -863,7 +1125,7 @@ func (c *integralArctan) approximate(p int) *big.Int {
 		term = bigDiv(power, bigMul(big.NewInt(sign), big.NewInt(n)))
 		sum = bigAdd(sum, term)
 	}
-	return scale(sum, calcPrec-p)
+	return scale(sum, calcPrec-p), nil
 }
 
 func (c *integralArctan) asConstruction() string {
@@ -886,31 +1148,47 @@ func newPrescaledSqrt(c Real) Real {
 	}
 }
 
-func (c *prescaledSqrt) approximate(p int) *big.Int {
+func (c *prescaledSqrt) approximate(ctx context.Context, p int) (*big.Int, error) {
 	pn := 2*p - 1
-	mr := msd(c.r, pn)
+	mr, err := msd(ctx, c.r, pn)
+	if err != nil {
+		return nil, err
+	}
+
 	if mr <= pn {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	digits := mr/2 - p
 	if digits > 40 {
 		pa := mr/2 - (digits/2 + 6)
-		ic := Approximate(c, pa)
-		ir := Approximate(c.r, 2*pa)
+		ic, err := approx(ctx, c, pa)
+		if err != nil {
+			return nil, err
+		}
+
+		ir, err := approx(ctx, c.r, 2*pa)
+		if err != nil {
+			return nil, err
+		}
 
 		numerator := scale(bigAdd(bigMul(ic, ic), ir), pa-p)
-		return bigRsh(bigAdd(bigDiv(numerator, ic), big.NewInt(1)), 1)
+		return bigRsh(bigAdd(bigDiv(numerator, ic), big.NewInt(1)), 1), nil
 	}
 
 	pa := (mr - 60) &^ 1
-	ir := bigLsh(Approximate(c.r, pa), 60)
+	ia, err := approx(ctx, c.r, pa)
+	if err != nil {
+		return nil, err
+	}
+
+	ir := bigLsh(ia, 60)
 	if ir.Sign() < 0 {
-		return nil
+		return nil, ErrNegative
 	}
 
 	fp, _ := ir.Float64()
-	return signedShift(big.NewInt(int64(math.Sqrt(fp))), (pa-60)/2-p)
+	return signedShift(big.NewInt(int64(math.Sqrt(fp))), (pa-60)/2-p), nil
 }
 
 func (c *prescaledSqrt) asConstruction() string {
@@ -918,23 +1196,28 @@ func (c *prescaledSqrt) asConstruction() string {
 }
 
 // Cosine computes the cosine of c.
+//
+// The range reduction is chosen on the first approximation, not here.
 func Cosine(c Real) Real {
-	rough := Approximate(c, -1)
+	return newDeferredReduction("Cosine", c, -1, reduceCosine)
+}
+
+func reduceCosine(c Real, rough *big.Int) (Real, error) {
 	if rough.CmpAbs(big.NewInt(6)) >= 0 {
 		mult := bigDiv(rough, big.NewInt(6))
 		adj := Multiply(Pi(), FromBigInt(mult))
 		if bigBitAnd(mult, big.NewInt(1)).Sign() != 0 {
-			return Negate(Cosine(Subtract(c, adj)))
+			return Negate(Cosine(Subtract(c, adj))), nil
 		}
 
-		return Cosine(Subtract(c, adj))
+		return Cosine(Subtract(c, adj)), nil
 	}
 
 	if rough.CmpAbs(big.NewInt(2)) >= 0 {
-		return Subtract(ShiftLeft(Square(Cosine(ShiftRight(c, 1))), 1), One())
+		return Subtract(ShiftLeft(Square(Cosine(ShiftRight(c, 1))), 1), One()), nil
 	}
 
-	return newPrescaledCosine(c)
+	return newPrescaledCosine(c), nil
 }
 
 // Sine computes the sine of c, using the identity `sin(c) = cos(π/2 - c)`.
@@ -954,15 +1237,21 @@ func Tangent(c Real) Real {
 // region. Odd symmetry strips the sign, the reciprocal identity
 // `atan(x) = π/2 - atan(1/x)` folds large arguments toward zero, and two
 // half-angle reductions pull the result below 1/4 before the series runs.
+//
+// The reduction is chosen on the first approximation, not here.
 func Arctangent(c Real) Real {
-	rough := Approximate(c, -3)
+	return newDeferredReduction("Arctangent", c, -3, reduceArctangent)
+}
+
+func reduceArctangent(c Real, rough *big.Int) (Real, error) {
 	if rough.Sign() < 0 {
-		return Negate(Arctangent(Negate(c)))
+		return Negate(Arctangent(Negate(c))), nil
 	}
 	if rough.Cmp(big.NewInt(8)) >= 0 {
-		return Subtract(ShiftRight(Pi(), 1), arctanReduced(Inverse(c)))
+		return Subtract(ShiftRight(Pi(), 1), arctanReduced(Inverse(c))), nil
 	}
-	return arctanReduced(c)
+
+	return arctanReduced(c), nil
 }
 
 // arctanReduced applies the half-angle reduction `atan(x) = 2·atan(x / (1 +
@@ -992,15 +1281,18 @@ func newPrescaledArctan(c Real) Real {
 	}
 }
 
-func (c *prescaledArctan) approximate(p int) *big.Int {
+func (c *prescaledArctan) approximate(ctx context.Context, p int) (*big.Int, error) {
 	if p >= 1 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	iters := -p/2 + 2
 	calcPrec := p - boundLog2(2*iters) - 4
 	opPrec := p - 3
-	opAppr := Approximate(c.r, opPrec)
+	opAppr, err := approx(ctx, c.r, opPrec)
+	if err != nil {
+		return nil, err
+	}
 
 	xToTheN := scale(opAppr, opPrec-calcPrec)
 	term := xToTheN
@@ -1017,7 +1309,7 @@ func (c *prescaledArctan) approximate(p int) *big.Int {
 		term = bigDiv(xToTheN, big.NewInt(sign*n))
 		sum = bigAdd(sum, term)
 	}
-	return scale(sum, calcPrec-p)
+	return scale(sum, calcPrec-p), nil
 }
 
 func (c *prescaledArctan) asConstruction() string {
@@ -1035,15 +1327,18 @@ func newPrescaledCosine(c Real) Real {
 	}
 }
 
-func (c *prescaledCosine) approximate(p int) *big.Int {
+func (c *prescaledCosine) approximate(ctx context.Context, p int) (*big.Int, error) {
 	if p >= 1 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	iters := -p/2 - 2
 	calcPrec := p - boundLog2(2*iters) - 4
 	opPrec := p - 3
-	opAppr := Approximate(c.r, opPrec)
+	opAppr, err := approx(ctx, c.r, opPrec)
+	if err != nil {
+		return nil, err
+	}
 
 	term := bigLsh(big.NewInt(1), uint(-calcPrec))
 	sum := term
@@ -1058,7 +1353,7 @@ func (c *prescaledCosine) approximate(p int) *big.Int {
 		sum = bigAdd(sum, term)
 	}
 
-	return scale(sum, calcPrec-p)
+	return scale(sum, calcPrec-p), nil
 }
 
 func (c *prescaledCosine) asConstruction() string {
@@ -1077,9 +1372,9 @@ func newPrimeConstantSummation() Real {
 	return &primeConstantSummation{}
 }
 
-func (c *primeConstantSummation) approximate(p int) *big.Int {
+func (c *primeConstantSummation) approximate(_ context.Context, p int) (*big.Int, error) {
 	if p >= 1 {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
 	}
 
 	// need 1/2^prime < 2^p, so prime > -p; plus safety margin 100(?)
@@ -1107,7 +1402,7 @@ func (c *primeConstantSummation) approximate(p int) *big.Int {
 		}
 	}
 
-	return scale(sum, calcPrec-p)
+	return scale(sum, calcPrec-p), nil
 }
 
 func (c *primeConstantSummation) asConstruction() string {

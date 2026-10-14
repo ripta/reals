@@ -1,4 +1,4 @@
-.PHONY: help clean test coverage coverage-func coverage-html coverage-clean
+.PHONY: help clean test test-race coverage coverage-func coverage-html coverage-clean
 
 COVERAGE_PROFILE := coverage.out
 COVERAGE_HTML := coverage.html
@@ -10,6 +10,9 @@ clean: coverage-clean ## Remove build artifacts
 
 test: ## Run all unit tests
 	go test -v ./...
+
+test-race: ## Run all unit tests under the race detector
+	go test -race ./...
 
 coverage: ## Run tests and write a coverage profile
 	go test -coverprofile=$(COVERAGE_PROFILE) ./...
