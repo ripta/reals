@@ -12,14 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// sqrt2Approximation approximates √2 at p by flooring √2·2^-p, which is within one
+// sqrtApproximation approximates √k at p by flooring √k·2^-p, which is within one
 // unit as the contract requires.
-func sqrt2Approximation(p int) *big.Int {
+func sqrtApproximation(k int, p int) *big.Int {
 	if p > 0 {
 		return big.NewInt(0)
 	}
 
-	return new(big.Int).Sqrt(new(big.Int).Lsh(big.NewInt(2), uint(-2*p)))
+	return new(big.Int).Sqrt(new(big.Int).Lsh(big.NewInt(int64(k)), uint(-2*p)))
 }
 
 // countingSqrt2 returns an Approximator of √2 that counts its runs.
@@ -27,12 +27,12 @@ func countingSqrt2(calls *atomic.Int64) Approximator {
 	return func(_ context.Context, p int) (*big.Int, error) {
 		calls.Add(1)
 
-		return sqrt2Approximation(p), nil
+		return sqrtApproximation(2, p), nil
 	}
 }
 
 func sqrt2Approximator(_ context.Context, p int) (*big.Int, error) {
-	return sqrt2Approximation(p), nil
+	return sqrtApproximation(2, p), nil
 }
 
 type approximationCompositionTest struct {
@@ -235,7 +235,7 @@ func TestFromApproximationRetriesAfterError(t *testing.T) {
 			return nil, errLeaf
 		}
 
-		return sqrt2Approximation(p), nil
+		return sqrtApproximation(2, p), nil
 	})
 
 	_, err := Approximate(testCtx, x, -20)
@@ -243,7 +243,7 @@ func TestFromApproximationRetriesAfterError(t *testing.T) {
 
 	got, err := Approximate(testCtx, x, -20)
 	assert.NoError(t, err)
-	assert.Zero(t, got.Cmp(sqrt2Approximation(-20)))
+	assert.Zero(t, got.Cmp(sqrtApproximation(2, -20)))
 	assert.Equal(t, int64(2), calls.Load())
 }
 
@@ -274,25 +274,25 @@ func TestFromApproximationCachedReadInsideCallback(t *testing.T) {
 			nested = v
 		}
 
-		return sqrt2Approximation(p), nil
+		return sqrtApproximation(2, p), nil
 	})
 
 	mustApproximate(t, x, -10)
 	mustApproximate(t, x, -40)
-	assert.Zero(t, nested.Cmp(sqrt2Approximation(-10)))
+	assert.Zero(t, nested.Cmp(sqrtApproximation(2, -10)))
 }
 
 func TestFromApproximationCopiesResult(t *testing.T) {
 	buf := new(big.Int)
 	x := FromApproximation("", func(_ context.Context, p int) (*big.Int, error) {
-		return buf.Set(sqrt2Approximation(p)), nil
+		return buf.Set(sqrtApproximation(2, p)), nil
 	})
 
 	got := mustApproximate(t, x, -40)
-	assert.Zero(t, got.Cmp(sqrt2Approximation(-40)))
+	assert.Zero(t, got.Cmp(sqrtApproximation(2, -40)))
 
 	buf.SetInt64(0)
-	assert.Zero(t, mustApproximate(t, x, -40).Cmp(sqrt2Approximation(-40)))
+	assert.Zero(t, mustApproximate(t, x, -40).Cmp(sqrtApproximation(2, -40)))
 }
 
 // TestFromApproximationConcurrentReaders shares one node across goroutines that
@@ -310,7 +310,7 @@ func TestFromApproximationConcurrentReaders(t *testing.T) {
 
 		runtime.Gosched()
 
-		return sqrt2Approximation(p), nil
+		return sqrtApproximation(2, p), nil
 	})
 
 	var wg sync.WaitGroup
@@ -332,7 +332,7 @@ func TestFromApproximationConcurrentReaders(t *testing.T) {
 			continue
 		}
 
-		diff := bigAbs(bigSub(got, sqrt2Approximation(p)))
+		diff := bigAbs(bigSub(got, sqrtApproximation(2, p)))
 		assert.LessOrEqual(t, diff.Int64(), int64(1), "p=%d", p)
 	}
 }
@@ -344,7 +344,7 @@ func TestFromApproximationWaiterHonorsContext(t *testing.T) {
 		close(entered)
 		<-release
 
-		return sqrt2Approximation(p), nil
+		return sqrtApproximation(2, p), nil
 	})
 
 	done := make(chan error)
@@ -400,16 +400,6 @@ func TestFromApproximationConstruction(t *testing.T) {
 func TestFromApproximationNilCallback(t *testing.T) {
 	assert.Nil(t, FromApproximation("", nil))
 	assert.Nil(t, FromApproximation("√2", nil))
-}
-
-// sqrtApproximation approximates √k at p by flooring √k·2^-p, which is within one
-// unit as the contract requires.
-func sqrtApproximation(k int, p int) *big.Int {
-	if p > 0 {
-		return big.NewInt(0)
-	}
-
-	return new(big.Int).Sqrt(new(big.Int).Lsh(big.NewInt(int64(k)), uint(-2*p)))
 }
 
 // sliceRoots are the radicands behind the outputs of the slice callbacks below.
@@ -1043,7 +1033,7 @@ func TestFromApproximationSliceDegenerateArguments(t *testing.T) {
 // One output is the single form's case n = 1: both build the same kind of node.
 func TestFromApproximationSliceOfOne(t *testing.T) {
 	outputs := FromApproximationSlice("", 1, func(ctx context.Context, p int) ([]*big.Int, error) {
-		return []*big.Int{sqrt2Approximation(p)}, nil
+		return []*big.Int{sqrtApproximation(2, p)}, nil
 	})
 	if !assert.Len(t, outputs, 1) {
 		return
