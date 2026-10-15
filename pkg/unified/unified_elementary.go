@@ -35,8 +35,14 @@ var ErrOutsideUnitInterval = errors.New("argument must be in [-1, 1]")
 var ErrUndefinedAtOrigin = errors.New("atan2 is undefined at the origin")
 
 // ErrNonPositiveInteger indicates that a function was called at a non-positive
-// integer, where it is undefined. Gamma has its poles there.
+// integer, where it is undefined. Gamma, Digamma, and Polygamma have their poles
+// there.
 var ErrNonPositiveInteger = errors.New("argument must not be a non-positive integer")
+
+// ErrNegativeOrder indicates that the order of a polygamma function is negative.
+// It is the same value as constructive.ErrNegativeOrder, so errors.Is matches a
+// failure raised in either layer.
+var ErrNegativeOrder = constructive.ErrNegativeOrder
 
 // halfPi is π/2, computed once and reused by the inverse-trig endpoints.
 var halfPi = sync.OnceValue(func() *Real {
@@ -113,10 +119,52 @@ func (u *Real) Sqrt(ctx context.Context) (*Real, error) {
 // representation, since constructive reals cannot decide equality in general. A
 // near-pole irrational argument is finite and computes to a large value.
 func (u *Real) Gamma() (*Real, error) {
-	if u.cr == constructive.One() && u.rr.IsInteger() && u.rr.Sign() <= 0 {
+	if u.isNonPositiveInteger() {
 		return nil, fmt.Errorf("Gamma: %w", ErrNonPositiveInteger)
 	}
 	return New(constructive.Gamma(u.Constructive()), rational.One()), nil
+}
+
+// Digamma returns the digamma function ψ(u), the logarithmic derivative of Gamma.
+//
+// It is undefined at the non-positive integers, its poles, and returns ErrNonPositiveInteger
+// there. Detection is structural: a pole written as a non-rational representation is not
+// detected, and approximating it ends in constructive.ErrUndecided or the context's error.
+//
+// A near-pole irrational argument is finite and computes to a large magnitude.
+func (u *Real) Digamma() (*Real, error) {
+	if u.isNonPositiveInteger() {
+		return nil, fmt.Errorf("Digamma: %w", ErrNonPositiveInteger)
+	}
+	return New(constructive.Digamma(u.Constructive()), rational.One()), nil
+}
+
+// Polygamma returns the polygamma function ψ⁽ⁿ⁾(u), the nth derivative of Digamma. Order
+// zero is Digamma.
+//
+// A negative order returns ErrNegativeOrder. The order is checked before the argument, so a
+// negative order fails the same way at a pole as anywhere else.
+//
+// The function is undefined at the non-positive integers, its poles, and returns
+// ErrNonPositiveInteger there. Detection is structural: a pole written as a non-rational
+// representation is not detected, and approximating it ends in constructive.ErrUndecided or
+// the context's error.
+//
+// A near-pole irrational argument is finite and computes to a large magnitude.
+func (u *Real) Polygamma(n int) (*Real, error) {
+	if n < 0 {
+		return nil, fmt.Errorf("Polygamma: %w", ErrNegativeOrder)
+	}
+	if u.isNonPositiveInteger() {
+		return nil, fmt.Errorf("Polygamma: %w", ErrNonPositiveInteger)
+	}
+	return New(constructive.Polygamma(n, u.Constructive()), rational.One()), nil
+}
+
+// isNonPositiveInteger reports whether u is structurally a non-positive integer: an
+// exact rational with no irrational factor. It is the pole test shared by the gamma family.
+func (u *Real) isNonPositiveInteger() bool {
+	return u.cr == constructive.One() && u.rr.IsInteger() && u.rr.Sign() <= 0
 }
 
 // Pow returns u raised to the power n.

@@ -1,6 +1,9 @@
 package unified
 
 import (
+	"errors"
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/ripta/reals/pkg/constructive"
@@ -483,5 +486,199 @@ func TestGammaNearPoleIrrational(t *testing.T) {
 	c := result.Constructive()
 	if mustPreciseCmp(t, c, One().Constructive(), -60) <= 0 {
 		t.Errorf("expected Gamma(√2/100) to exceed 1, got %s", mustText(t, c, 6, 10))
+	}
+}
+
+// ln2 is the natural logarithm of two.
+func ln2() *Real {
+	return New(constructive.Ln(constructive.Two()), rational.One())
+}
+
+// piSquaredOver returns π²/d.
+func piSquaredOver(d int64) *Real {
+	return Pi().Multiply(Pi()).Divide(rat(d, 1))
+}
+
+// nearPoleIrrational returns k + √2/100, an irrational argument 0.0141 above the integer k.
+// It is not structurally an integer, so no pole check applies even when k is non-positive.
+func nearPoleIrrational(k int64) *Real {
+	return New(constructive.Sqrt2(), rational.New64(1, 100)).Add(rat(k, 1))
+}
+
+type polygammaTest struct {
+	name     string
+	order    int
+	input    *Real
+	expected *Real
+
+	// minus, when set, is an argument whose same-order result is subtracted from the
+	// input's, so a case can check a difference with a known closed form.
+	minus *Real
+}
+
+var polygammaTests = []polygammaTest{
+	{name: "Digamma(1/2)-Digamma(1)=-2ln2", order: 0, input: Half(), minus: One(), expected: ln2().ShiftLeft(1).Negate()},
+	{name: "Polygamma(1) at 1=pi^2/6", order: 1, input: One(), expected: piSquaredOver(6)},
+	{name: "Polygamma(1) at 1/2=pi^2/2", order: 1, input: Half(), expected: piSquaredOver(2)},
+	{name: "Polygamma(1) at -1/2=pi^2/2+4", order: 1, input: rat(-1, 2), expected: piSquaredOver(2).Add(rat(4, 1))},
+}
+
+// TestPolygammaValues checks Polygamma against known closed forms. Digamma(1/2) − Digamma(1)
+// is −2 ln 2, so the first case compares a difference, which avoids needing the
+// Euler–Mascheroni constant.
+func TestPolygammaValues(t *testing.T) {
+	for _, test := range polygammaTests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Polygamma(test.order)
+			assert.NoError(t, err)
+			if test.minus != nil {
+				other, err := test.minus.Polygamma(test.order)
+				assert.NoError(t, err)
+				result = result.Subtract(other)
+			}
+			assertEqualAtPrecision(t, test.expected, result, -60)
+			assertEqualAtPrecision(t, test.expected, result, -120)
+		})
+	}
+}
+
+// TestPolygammaZeroIsDigamma confirms unified Digamma and unified Polygamma(0) agree.
+func TestPolygammaZeroIsDigamma(t *testing.T) {
+	for _, x := range []*Real{One(), rat(-7, 3), nearPoleIrrational(-2)} {
+		d, err := x.Digamma()
+		assert.NoError(t, err)
+		p, err := x.Polygamma(0)
+		assert.NoError(t, err)
+		assertEqualAtPrecision(t, d, p, -80)
+	}
+
+	_, err := Zero().Polygamma(0)
+	assert.ErrorIs(t, err, ErrNonPositiveInteger)
+	assert.ErrorContains(t, err, "Polygamma")
+}
+
+var polygammaPoleTests = []struct {
+	name  string
+	input *Real
+}{
+	{name: "0", input: Zero()},
+	{name: "-1", input: NegativeOne()},
+	{name: "-5", input: rat(-5, 1)},
+	{name: "-10/2", input: rat(-10, 2)},
+}
+
+func TestDigammaPoles(t *testing.T) {
+	for _, test := range polygammaPoleTests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Digamma()
+			assert.Nil(t, result)
+			assert.ErrorIs(t, err, ErrNonPositiveInteger)
+			assert.ErrorContains(t, err, "Digamma")
+		})
+	}
+}
+
+func TestPolygammaPoles(t *testing.T) {
+	for _, test := range polygammaPoleTests {
+		for _, n := range []int{1, 3} {
+			t.Run(fmt.Sprintf("n=%d at %s", n, test.name), func(t *testing.T) {
+				result, err := test.input.Polygamma(n)
+				assert.Nil(t, result)
+				assert.ErrorIs(t, err, ErrNonPositiveInteger)
+				assert.ErrorContains(t, err, "Polygamma")
+			})
+		}
+	}
+}
+
+var polygammaNegativeOrderTests = []struct {
+	name  string
+	order int
+	input *Real
+}{
+	{name: "order -1 at 1", order: -1, input: One()},
+	{name: "order -1 at a pole", order: -1, input: NegativeOne()},
+	{name: "order -1 at zero", order: -1, input: Zero()},
+	{name: "order MinInt at 1/2", order: math.MinInt, input: Half()},
+	{name: "order MinInt at a pole", order: math.MinInt, input: rat(-3, 1)},
+	{name: "order -2 at an irrational", order: -2, input: Pi()},
+}
+
+// TestPolygammaNegativeOrder checks that the order is rejected before the argument is
+// examined, so a pole argument reports the order, not the pole.
+func TestPolygammaNegativeOrder(t *testing.T) {
+	for _, test := range polygammaNegativeOrderTests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := test.input.Polygamma(test.order)
+			assert.Nil(t, result)
+			assert.ErrorIs(t, err, ErrNegativeOrder)
+			assert.ErrorIs(t, err, constructive.ErrNegativeOrder)
+			assert.False(t, errors.Is(err, ErrNonPositiveInteger))
+		})
+	}
+}
+
+var polygammaNonRationalTests = []struct {
+	name  string
+	order int
+	input *Real
+}{
+	{name: "Digamma(sqrt2)", order: 0, input: irr(constructive.Sqrt2())},
+	{name: "Digamma(pi/3)", order: 0, input: New(constructive.Pi(), rational.New64(1, 3))},
+	{name: "Polygamma(2) at sqrt2", order: 2, input: irr(constructive.Sqrt2())},
+	{name: "Digamma(-pi)", order: 0, input: Pi().Negate()},
+	{name: "Polygamma(1) at -pi", order: 1, input: Pi().Negate()},
+	{name: "Digamma near 0", order: 0, input: nearPoleIrrational(0)},
+	{name: "Digamma near -1", order: 0, input: nearPoleIrrational(-1)},
+	{name: "Digamma near -4", order: 0, input: nearPoleIrrational(-4)},
+	{name: "Polygamma(2) near 0", order: 2, input: nearPoleIrrational(0)},
+	{name: "Polygamma(2) near -1", order: 2, input: nearPoleIrrational(-1)},
+	{name: "Polygamma(3) near -3", order: 3, input: nearPoleIrrational(-3)},
+}
+
+// TestPolygammaNonRationalRecurrence checks ψ⁽ⁿ⁾ on non-rational arguments, including
+// irrationals just above a pole, against the recurrence
+// ψ⁽ⁿ⁾(x+1) − ψ⁽ⁿ⁾(x) = (−1)ⁿ·n!/xⁿ⁺¹. The two sides take different paths through the
+// reflection and the shift, so agreement shows each computes. None of the arguments is
+// structurally a pole, so none returns an error.
+func TestPolygammaNonRationalRecurrence(t *testing.T) {
+	for _, test := range polygammaNonRationalTests {
+		t.Run(test.name, func(t *testing.T) {
+			x := test.input
+			lo, err := x.Polygamma(test.order)
+			assert.NoError(t, err)
+			hi, err := x.Add(One()).Polygamma(test.order)
+			assert.NoError(t, err)
+
+			// (−1)ⁿ·n!/xⁿ⁺¹
+			want := rat(1, 1)
+			for i := 1; i <= test.order; i++ {
+				want = want.Multiply(rat(int64(-i), 1))
+			}
+			for i := 0; i <= test.order; i++ {
+				want = want.Divide(x)
+			}
+			assertEqualAtPrecision(t, want, hi.Subtract(lo), -60)
+		})
+	}
+}
+
+// TestPolygammaNearPoleIrrational confirms the structural pole check does not misfire on an
+// irrational argument next to a pole: ψ(√2/100) is large and negative, since ψ(x) ~ −1/x.
+func TestPolygammaNearPoleIrrational(t *testing.T) {
+	result, err := nearPoleIrrational(0).Digamma()
+	assert.NoError(t, err)
+
+	c := result.Constructive()
+	if mustPreciseCmp(t, c, rat(-50, 1).Constructive(), -60) >= 0 {
+		t.Errorf("expected Digamma(√2/100) below -50, got %s", mustText(t, c, 6, 10))
+	}
+
+	result, err = nearPoleIrrational(0).Polygamma(1)
+	assert.NoError(t, err)
+
+	c = result.Constructive()
+	if mustPreciseCmp(t, c, rat(1000, 1).Constructive(), -60) <= 0 {
+		t.Errorf("expected Polygamma(1) at √2/100 above 1000, got %s", mustText(t, c, 6, 10))
 	}
 }
