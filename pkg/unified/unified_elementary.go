@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 
 	"github.com/ripta/reals/pkg/constructive"
@@ -169,15 +170,22 @@ func (u *Real) isNonPositiveInteger() bool {
 
 // Pow returns u raised to the power n.
 //
-// An integer exponent is honored over any base via sign-aware repeated
-// multiplication. A non-integer exponent requires a positive base and returns
+// An integer exponent is honored over any base by exponentiation by squaring. The rational factor
+// of u is raised exactly, and the constructive factor is raised by squaring over the bits of the
+// exponent, so the resulting tree has a depth logarithmic in the exponent. A purely rational base
+// stays purely rational. A non-integer exponent requires a positive base and returns
 // ErrNonPositive otherwise. The base zero is handled explicitly:
 //
 // - `Pow(0, k)` is 0 for positive k.
 // - `Pow(0, 0)` is 1
 // - A negative or non-integer exponent over a zero base returns ErrNonPositive.
 //
-// Errors from deciding the sign, including the context error, are returned.
+// The exact rational power is computed eagerly. The precision limit carried by ctx bounds its size
+// as well as the precision of approximations, and a power whose estimated size exceeds the limit
+// returns constructive.ErrPrecisionOverflow. A context with no limit places no bound on the size.
+//
+// Errors from deciding the sign, including the context error, are returned. A context error from
+// an integer exponent is returned as it is.
 func (u *Real) Pow(ctx context.Context, n *Real) (*Real, error) {
 	if n.cr == constructive.One() && n.rr.IsInteger() {
 		if u.IsZero() {
@@ -191,16 +199,26 @@ func (u *Real) Pow(ctx context.Context, n *Real) (*Real, error) {
 			}
 		}
 
-		result := One()
-		e := n.rr
-		if e.Sign() < 0 {
-			e = e.Negate()
-		}
-		for e.Sign() > 0 {
-			result = result.Multiply(u)
-			e = e.Subtract(rational.One())
+		exp := n.rr.Num()
+		exp.Abs(exp)
+
+		rr, err := u.rr.Pow(ctx, exp)
+		if err != nil {
+			if errors.Is(err, constructive.ErrPrecisionOverflow) {
+				return nil, fmt.Errorf("Pow: %w", err)
+			}
+			return nil, err
 		}
 
+		cr := constructive.One()
+		if u.cr != constructive.One() {
+			cr, err = powConstructive(ctx, u.cr, exp)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		result := New(cr, rr)
 		if n.rr.Sign() < 0 {
 			result = result.Inverse()
 		}
@@ -217,6 +235,32 @@ func (u *Real) Pow(ctx context.Context, n *Real) (*Real, error) {
 	}
 
 	return New(constructive.Pow(c, n.Constructive()), rational.One()), nil
+}
+
+// powConstructive raises c to the non-negative integer power e by squaring over the bits of e. Each
+// squaring shares its operand, so the tree has O(log e) nodes and depth. It returns the context's
+// error as it is.
+func powConstructive(ctx context.Context, c constructive.Real, e *big.Int) (constructive.Real, error) {
+	var result constructive.Real
+	for i, n := 0, e.BitLen(); i < n; i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if e.Bit(i) == 1 {
+			if result == nil {
+				result = c
+			} else {
+				result = constructive.Multiply(result, c)
+			}
+		}
+		if i < n-1 {
+			c = constructive.Square(c)
+		}
+	}
+	if result == nil {
+		return constructive.One(), nil
+	}
+	return result, nil
 }
 
 // Log10 returns the base-10 logarithm of u. It requires a positive argument and

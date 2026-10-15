@@ -74,6 +74,14 @@ var cancelledPartialTests = []partialContextTest{
 		run:  func(ctx context.Context) (*Real, error) { return constructiveZero().Pow(ctx, Half()) },
 	},
 	{
+		name: "Pow of a rational base to an integer power",
+		run:  func(ctx context.Context) (*Real, error) { return Two().Pow(ctx, rat(3, 1)) },
+	},
+	{
+		name: "Pow of an irrational base to an integer power",
+		run:  func(ctx context.Context) (*Real, error) { return irr(constructive.Sqrt2()).Pow(ctx, rat(3, 1)) },
+	},
+	{
 		name: "Asin of a constructive one",
 		run:  func(ctx context.Context) (*Real, error) { return oneButNotStructurally().Asin(ctx) },
 	},
