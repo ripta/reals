@@ -2,6 +2,7 @@ package constructive
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 )
 
@@ -50,39 +51,165 @@ func FromApproximation(label string, fn Approximator) Real {
 	return newNamed(label, c)
 }
 
-// approximatorNode is a Real whose approximations come from a caller's callback.
+// SliceApproximator computes several Real numbers at once to a requested precision.
+// Given p, it returns one integer per output, and element i is an integer a such
+// that a·2^p is within 2^p of output i. Each element meets the same contract as
+// the integer an Approximator returns. The slice must have exactly the length
+// given to FromApproximationSlice.
+//
+// The Reals built from a SliceApproximator share one computation. The callback is
+// called only for a precision finer than any it has computed so far, and every
+// output is then refined from that one run. A coarser request for any output is
+// rounded from the finest result. Agreement between the callback's own results at
+// different precisions, and between its outputs, is its own responsibility.
+//
+// ctx is the caller's context, marked as running this SliceApproximator. It should
+// be honored, so that a cancelled caller is not left waiting. It must also be
+// passed, or a context derived from it, to any approximation the callback makes. A
+// nested approximation of any of the outputs that would run the callback again
+// then fails with ErrReentrantApproximation. Under an unrelated context the nested
+// call cannot be told from a concurrent one, so it waits for the outer run, which
+// cannot finish before it, until that context ends.
+//
+// An error is returned to the caller unchanged, and none of the outputs is
+// updated. A slice of the wrong length, or one holding a nil element, is reported
+// as ErrBadApproximation and updates none of the outputs either. The returned
+// integers are copied, so the callback may keep and reuse them.
+//
+// A SliceApproximator is never run concurrently with itself for the same outputs.
+// Callers approximating any of them from several goroutines wait for the run in
+// progress and share its result when it covers their precision.
+type SliceApproximator func(ctx context.Context, p int) ([]*big.Int, error)
+
+// FromApproximationSlice creates n Real numbers whose approximations all come from
+// one call of fn. Output i of the result is element i of what fn returns. A
+// non-empty label names every output, as for FromApproximation, so that
+// ConstructiveName returns it. It returns nil when fn is nil, and an empty slice
+// when n is not positive.
+func FromApproximationSlice(label string, n int, fn SliceApproximator) []Real {
+	if fn == nil {
+		return nil
+	}
+
+	if n <= 0 {
+		return []Real{}
+	}
+
+	outputs := newApproximatorSlice(n, fn)
+	if label == "" {
+		return outputs
+	}
+
+	for i, c := range outputs {
+		outputs[i] = newNamed(label, c)
+	}
+
+	return outputs
+}
+
+// approximationSet is the computation shared by the outputs of one callback. It
+// owns the one guard, so that a run started by any output keeps every sibling out
+// until it finishes, and a nested read of any of them is detected as re-entrant.
+type approximationSet struct {
+	fn      SliceApproximator
+	guard   *approximationGuard
+	outputs []*approximatorNode
+}
+
+// approximatorNode is one output of an approximationSet. It is the Real whose
+// approximations come from a caller's callback.
 type approximatorNode struct {
 	precisionTracker
 
-	fn    Approximator
-	guard *approximationGuard
+	set          *approximationSet
+	index        int
+	construction string
 }
 
+// newApproximator builds the single output of a callback that returns one integer.
 func newApproximator(fn Approximator) Real {
-	return &approximatorNode{
-		fn:    fn,
-		guard: newApproximationGuard(),
+	set := newApproximationSet(1, func(ctx context.Context, p int) ([]*big.Int, error) {
+		v, err := fn(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+
+		return []*big.Int{v}, nil
+	})
+	set.outputs[0].construction = "Approximation()"
+
+	return set.outputs[0]
+}
+
+// newApproximatorSlice builds the n outputs of a callback that returns n integers.
+func newApproximatorSlice(n int, fn SliceApproximator) []Real {
+	set := newApproximationSet(n, fn)
+
+	outputs := make([]Real, n)
+	for i, c := range set.outputs {
+		c.construction = fmt.Sprintf("Approximation(%d, %d)", i, n)
+		outputs[i] = c
 	}
+
+	return outputs
+}
+
+func newApproximationSet(n int, fn SliceApproximator) *approximationSet {
+	set := &approximationSet{
+		fn:      fn,
+		guard:   newApproximationGuard(),
+		outputs: make([]*approximatorNode, n),
+	}
+	for i := range set.outputs {
+		set.outputs[i] = &approximatorNode{set: set, index: i}
+	}
+
+	return set
 }
 
 func (c *approximatorNode) approximate(ctx context.Context, p int) (*big.Int, error) {
+	return c.set.approximate(ctx, c.index, p)
+}
+
+func (c *approximatorNode) asConstruction() string {
+	return c.construction
+}
+
+// approximate returns output i at p, running the callback when no run has covered
+// p yet. Every output is written from a run before the guard is released, so a
+// caller waiting on any sibling finds it in its own cache.
+func (s *approximationSet) approximate(ctx context.Context, i, p int) (*big.Int, error) {
 	var result *big.Int
-	err := c.guard.run(ctx, func(ctx context.Context) error {
+	err := s.guard.run(ctx, func(ctx context.Context) error {
 		// A run that finished while this call waited its turn may already cover p.
-		if s, ok := c.Get(p); ok {
-			result = s
+		if v, ok := s.outputs[i].Get(p); ok {
+			result = v
 			return nil
 		}
 
-		v, err := c.fn(ctx, p)
+		values, err := s.fn(ctx, p)
 		if err != nil {
 			return err
 		}
-		if v == nil {
+
+		if len(values) != len(s.outputs) {
 			return ErrBadApproximation
 		}
+		for _, v := range values {
+			if v == nil {
+				return ErrBadApproximation
+			}
+		}
 
-		result = new(big.Int).Set(v)
+		for j, v := range values {
+			// Each output gets its own copy, so that no two outputs, and not the
+			// callback, share an integer.
+			c := s.outputs[j].Set(p, new(big.Int).Set(v))
+			if j == i {
+				result = c
+			}
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -90,10 +217,6 @@ func (c *approximatorNode) approximate(ctx context.Context, p int) (*big.Int, er
 	}
 
 	return result, nil
-}
-
-func (c *approximatorNode) asConstruction() string {
-	return "Approximation()"
 }
 
 // approximationGuard serializes the runs of one approximation callback and detects

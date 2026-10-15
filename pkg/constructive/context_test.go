@@ -157,6 +157,14 @@ var nodeTests = []nodeTest{
 		},
 	},
 	{
+		Name: "approximation callback, slice output",
+		Build: func(_ Real) Real {
+			return newApproximatorSlice(2, func(_ context.Context, p int) ([]*big.Int, error) {
+				return []*big.Int{scale(big.NewInt(5), -p), scale(big.NewInt(7), -p)}, nil
+			})[1]
+		},
+	},
+	{
 		Name:     "arithmetic-geometric mean, first operand",
 		Build:    func(child Real) Real { return newArithmeticGeometricMean(child, FromInt(2)) },
 		HasChild: true,
@@ -429,6 +437,30 @@ var sentinelTests = []sentinelTest{
 			return Add(FromInt(1), FromApproximation("", func(context.Context, int) (*big.Int, error) {
 				return nil, nil
 			}))
+		},
+		Precision: -10,
+		Expected:  ErrBadApproximation,
+	},
+	{
+		Name: "approximation slice of the wrong length inside a composite",
+		Build: func() Real {
+			outputs := FromApproximationSlice("", 2, func(context.Context, int) ([]*big.Int, error) {
+				return []*big.Int{big.NewInt(1)}, nil
+			})
+
+			return Add(FromInt(1), outputs[1])
+		},
+		Precision: -10,
+		Expected:  ErrBadApproximation,
+	},
+	{
+		Name: "approximation slice with a nil element inside a composite",
+		Build: func() Real {
+			outputs := FromApproximationSlice("", 2, func(context.Context, int) ([]*big.Int, error) {
+				return []*big.Int{big.NewInt(1), nil}, nil
+			})
+
+			return Add(outputs[0], outputs[1])
 		},
 		Precision: -10,
 		Expected:  ErrBadApproximation,

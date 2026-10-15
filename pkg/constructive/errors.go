@@ -26,11 +26,13 @@ var (
 	ErrNonPositive = errors.New("non-positive value out of domain")
 
 	// ErrBadApproximation is returned when an approximation callback breaks its
-	// contract, such as by returning a nil approximation with a nil error.
+	// contract, such as by returning a nil approximation with a nil error, or a
+	// slice of approximations of the wrong length.
 	ErrBadApproximation = errors.New("approximation callback broke its contract")
 
 	// ErrReentrantApproximation is returned when an approximation callback, while
-	// it runs, asks for an approximation of its own value that would run it again.
+	// it runs, asks for an approximation of its own value, or of a sibling output
+	// that shares its computation, that would run it again.
 	ErrReentrantApproximation = errors.New("approximation callback re-entered itself")
 
 	errNoKnownMSD = errors.New("most significant digit is not known")
