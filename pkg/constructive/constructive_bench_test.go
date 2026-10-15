@@ -22,27 +22,79 @@ func deepExpLn() Real {
 	return x
 }
 
-func benchTextOnce(b *testing.B, c Real) string {
+func benchTextOnce(b *testing.B, c Real, digits int) string {
 	b.Helper()
 
-	return mustText(b, c, 1000, 10)
+	return mustText(b, c, digits, 10)
 }
 
-func benchText(b *testing.B, build func() Real) {
+func benchText(b *testing.B, digits int, build func() Real) {
 	b.Helper()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		if got := benchTextOnce(b, build()); len(got) == 0 {
+		if got := benchTextOnce(b, build(), digits); len(got) == 0 {
 			b.Fatal("empty text")
 		}
 	}
 }
 
 func BenchmarkTextPi1000(b *testing.B) {
-	benchText(b, freshPi)
+	benchText(b, 1000, freshPi)
 }
 
 func BenchmarkTextDeepExpLn1000(b *testing.B) {
-	benchText(b, deepExpLn)
+	benchText(b, 1000, deepExpLn)
+}
+
+// digammaBench builds a fresh digamma at a non-trivial rational argument.
+func digammaBench() Real {
+	return Digamma(FromRat(7, 2))
+}
+
+// reset empties the shared Bernoulli cache, so the next approximation pays for
+// filling it. Only benchmarks use it: in use, the cache fills once and stays.
+func (b *bernoulliEvens) reset() {
+	b.values.Store(nil)
+}
+
+// benchDigamma runs digamma over a fresh tree per iteration. A cold run empties the Bernoulli
+// cache first, so it measures the one-time cost of filling it. A warm run fills the cache
+// before timing starts, so it measures the cost of an approximation that finds the numbers
+// already there.
+func benchDigamma(b *testing.B, digits int, cold bool) {
+	b.Helper()
+
+	if !cold {
+		benchTextOnce(b, digammaBench(), digits)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if cold {
+			bernoulliCache.reset()
+		}
+
+		if got := benchTextOnce(b, digammaBench(), digits); len(got) == 0 {
+			b.Fatal("empty text")
+		}
+	}
+}
+
+func BenchmarkDigamma50(b *testing.B) {
+	benchDigamma(b, 50, false)
+}
+
+func BenchmarkDigamma1000(b *testing.B) {
+	benchDigamma(b, 1000, false)
+}
+
+func BenchmarkDigammaCold50(b *testing.B) {
+	benchDigamma(b, 50, true)
+}
+
+func BenchmarkDigammaCold1000(b *testing.B) {
+	benchDigamma(b, 1000, true)
 }

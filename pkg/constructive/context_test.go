@@ -179,6 +179,11 @@ var nodeTests = []nodeTest{
 		Build:    func(child Real) Real { return newSpougeGamma(child) },
 		HasChild: true,
 	},
+	{
+		Name:     "digamma series",
+		Build:    func(child Real) Real { return newPolygammaSeries(child) },
+		HasChild: true,
+	},
 }
 
 func TestApproximateCancelledContext(t *testing.T) {
