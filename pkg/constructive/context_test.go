@@ -149,6 +149,14 @@ var nodeTests = []nodeTest{
 		Build: func(_ Real) Real { return newPrimeConstantSummation() },
 	},
 	{
+		Name: "approximation callback",
+		Build: func(_ Real) Real {
+			return newApproximator(func(_ context.Context, p int) (*big.Int, error) {
+				return scale(big.NewInt(5), -p), nil
+			})
+		},
+	},
+	{
 		Name:     "arithmetic-geometric mean, first operand",
 		Build:    func(child Real) Real { return newArithmeticGeometricMean(child, FromInt(2)) },
 		HasChild: true,
@@ -414,6 +422,16 @@ var sentinelTests = []sentinelTest{
 		Build:     func() Real { return Add(FromInt(1), nil) },
 		Precision: -10,
 		Expected:  ErrNilReal,
+	},
+	{
+		Name: "approximation callback returning nil inside a composite",
+		Build: func() Real {
+			return Add(FromInt(1), FromApproximation("", func(context.Context, int) (*big.Int, error) {
+				return nil, nil
+			}))
+		},
+		Precision: -10,
+		Expected:  ErrBadApproximation,
 	},
 }
 
