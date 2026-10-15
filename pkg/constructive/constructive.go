@@ -945,7 +945,7 @@ func Exp(c Real) Real {
 	return newDeferredReduction("Exp", c, -3, reduceExp)
 }
 
-func reduceExp(c Real, rough *big.Int) (Real, error) {
+func reduceExp(_ context.Context, c Real, rough *big.Int) (Real, error) {
 	// e^-c = 1/e^c
 	if rough.Sign() < 0 {
 		return Inverse(Exp(Negate(c))), nil
@@ -1020,7 +1020,7 @@ func Ln(c Real) Real {
 	return newDeferredReduction("Ln", c, -4, reduceLn)
 }
 
-func reduceLn(c Real, rough *big.Int) (Real, error) {
+func reduceLn(_ context.Context, c Real, rough *big.Int) (Real, error) {
 	if rough.Sign() < 0 {
 		return nil, ErrNonPositive
 	}
@@ -1202,7 +1202,7 @@ func Cosine(c Real) Real {
 	return newDeferredReduction("Cosine", c, -1, reduceCosine)
 }
 
-func reduceCosine(c Real, rough *big.Int) (Real, error) {
+func reduceCosine(_ context.Context, c Real, rough *big.Int) (Real, error) {
 	if rough.CmpAbs(big.NewInt(6)) >= 0 {
 		mult := bigDiv(rough, big.NewInt(6))
 		adj := Multiply(Pi(), FromBigInt(mult))
@@ -1243,7 +1243,7 @@ func Arctangent(c Real) Real {
 	return newDeferredReduction("Arctangent", c, -3, reduceArctangent)
 }
 
-func reduceArctangent(c Real, rough *big.Int) (Real, error) {
+func reduceArctangent(_ context.Context, c Real, rough *big.Int) (Real, error) {
 	if rough.Sign() < 0 {
 		return Negate(Arctangent(Negate(c))), nil
 	}

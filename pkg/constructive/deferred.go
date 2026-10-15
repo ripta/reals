@@ -8,8 +8,10 @@ import (
 )
 
 // reducer picks a range reduction for an argument from its rough approximation,
-// and builds the reduced subtree. It must not approximate anything itself.
-type reducer func(arg Real, rough *big.Int) (Real, error)
+// and builds the reduced subtree. It must not approximate anything itself. The context is the
+// caller's, for a reduction whose building work grows with its inputs: a cancelled context
+// makes it return the context's error, and the node then memoizes nothing.
+type reducer func(ctx context.Context, arg Real, rough *big.Int) (Real, error)
 
 // deferredReduction is a function of one argument whose range reduction depends on
 // the argument's magnitude. Choosing the reduction needs a rough approximation of
@@ -27,6 +29,7 @@ type deferredReduction struct {
 	precisionTracker
 
 	name      string
+	lead      string // printed before the argument, for a function of more than one argument
 	arg       Real
 	roughPrec int
 	reduce    reducer
@@ -41,8 +44,16 @@ type reducedTree struct {
 }
 
 func newDeferredReduction(name string, arg Real, roughPrec int, reduce reducer) Real {
+	return newDeferredReductionLead(name, "", arg, roughPrec, reduce)
+}
+
+// newDeferredReductionLead is newDeferredReduction for a function with leading arguments that
+// are not Reals, such as an order. lead is their text, printed before the reduced argument,
+// including its separator: "3, " prints as Name(3, arg).
+func newDeferredReductionLead(name, lead string, arg Real, roughPrec int, reduce reducer) Real {
 	return &deferredReduction{
 		name:      name,
+		lead:      lead,
 		arg:       arg,
 		roughPrec: roughPrec,
 		reduce:    reduce,
@@ -57,7 +68,7 @@ func (c *deferredReduction) approximate(ctx context.Context, p int) (*big.Int, e
 			return nil, err
 		}
 
-		root, err := c.reduce(c.arg, rough)
+		root, err := c.reduce(ctx, c.arg, rough)
 		if err != nil {
 			return nil, err
 		}
@@ -76,5 +87,5 @@ func (c *deferredReduction) asConstruction() string {
 		return tree.root.asConstruction()
 	}
 
-	return fmt.Sprintf("%s(%s)", c.name, c.arg.asConstruction())
+	return fmt.Sprintf("%s(%s%s)", c.name, c.lead, c.arg.asConstruction())
 }

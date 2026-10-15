@@ -181,8 +181,17 @@ var nodeTests = []nodeTest{
 	},
 	{
 		Name:     "digamma series",
-		Build:    func(child Real) Real { return newPolygammaSeries(child) },
+		Build:    func(child Real) Real { return newPolygammaSeries(0, child) },
 		HasChild: true,
+	},
+	{
+		Name:     "polygamma series",
+		Build:    func(child Real) Real { return newPolygammaSeries(3, child) },
+		HasChild: true,
+	},
+	{
+		Name:  "polygamma of a negative order",
+		Build: func(child Real) Real { return Polygamma(-1, child) },
 	},
 }
 

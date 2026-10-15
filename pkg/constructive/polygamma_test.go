@@ -214,7 +214,7 @@ func TestDigammaCoarsePrecision(t *testing.T) {
 
 func TestDigammaAsConstruction(t *testing.T) {
 	assert.Equal(t, "Digamma(Int(3))", Digamma(FromInt(3)).asConstruction())
-	assert.Equal(t, "Digamma(Int(3))", newPolygammaSeries(FromInt(3)).asConstruction())
+	assert.Equal(t, "Digamma(Int(3))", newPolygammaSeries(0, FromInt(3)).asConstruction())
 }
 
 func TestDigammaHonorsContext(t *testing.T) {
@@ -269,18 +269,32 @@ func TestDigammaBoundaryBranches(t *testing.T) {
 	}
 }
 
-// exactlyBelow reports whether the first neglected term at the integer y, with K terms
-// summed, is below 2^tolExp for tolExp < 0. It uses exact integer arithmetic.
-func exactlyBelow(t *testing.T, y *big.Int, terms, tolExp int) bool {
+// exactlyBelow reports whether the first neglected term of order n at the integer y, with K
+// terms summed, is below 2^tolExp for tolExp < 0. The term is
+// |B₂ₖ₊₂|·(2K+n+1)!/((2K+2)!·y^(2K+2+n)). It uses exact integer arithmetic.
+func exactlyBelow(t *testing.T, order int, y *big.Int, terms, tolExp int) bool {
 	t.Helper()
 
 	b := mustBernoulliEven(t, bernoulliCache, terms+1)
 	k2 := 2*terms + 2
 
-	// |B| / (k2·y^k2) < 2^tolExp  ⇔  |num|·2^(−tolExp) < denom·k2·y^k2.
+	// The factorial ratio (k2+n−1)!/k2! is 1/k2 for n = 0, and (k2+1)⋯(k2+n−1) otherwise.
+	ratioNum, ratioDenom := big.NewInt(1), big.NewInt(1)
+	if order == 0 {
+		ratioDenom.SetInt64(int64(k2))
+	}
+
+	for j := 1; j < order; j++ {
+		ratioNum.Mul(ratioNum, big.NewInt(int64(k2+j)))
+	}
+
+	// |num|·ratioNum / (denom·ratioDenom·y^(k2+n)) < 2^tolExp
+	//   ⇔  |num|·ratioNum·2^(−tolExp) < denom·ratioDenom·y^(k2+n).
 	left := new(big.Int).Lsh(new(big.Int).Abs(b.Num()), uint(-tolExp))
-	right := new(big.Int).Exp(y, big.NewInt(int64(k2)), nil)
-	right.Mul(right, big.NewInt(int64(k2)))
+	left.Mul(left, ratioNum)
+
+	right := new(big.Int).Exp(y, big.NewInt(int64(k2+order)), nil)
+	right.Mul(right, ratioDenom)
 	right.Mul(right, b.Denom())
 
 	return left.Cmp(right) < 0
@@ -288,6 +302,7 @@ func exactlyBelow(t *testing.T, y *big.Int, terms, tolExp int) bool {
 
 type polygammaPlanTest struct {
 	name   string
+	order  int
 	shift  uint
 	tolExp int
 }
@@ -299,6 +314,15 @@ var polygammaPlanTests = []polygammaPlanTest{
 	{name: "inside the overflow band", shift: 970, tolExp: -100008},
 	{name: "deep inside the overflow band", shift: 990, tolExp: -100008},
 	{name: "inside the overflow band, coarse", shift: 970, tolExp: -100},
+	{name: "order 1, small argument", order: 1, shift: 0, tolExp: -100},
+	{name: "order 3, small argument, fine", order: 3, shift: 0, tolExp: -600},
+	{name: "order 3, a mid-size argument", order: 3, shift: 10, tolExp: -600},
+	{name: "order 8, small argument", order: 8, shift: 0, tolExp: -100},
+	{name: "order 20, small argument, coarse", order: 20, shift: 0, tolExp: -10},
+	{name: "order 1, just below the float estimate's overflow", order: 1, shift: 962, tolExp: -100008},
+	{name: "order 3, inside the overflow band", order: 3, shift: 970, tolExp: -100008},
+	{name: "order 3, deep inside the overflow band", order: 3, shift: 990, tolExp: -100008},
+	{name: "order 5, inside the overflow band, coarse", order: 5, shift: 970, tolExp: -100},
 }
 
 // TestPolygammaPlanBoundHoldsAtTheTrueArgument checks the truncation bound at the exact y,
@@ -313,27 +337,29 @@ func TestPolygammaPlanBoundHoldsAtTheTrueArgument(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, test.shift >= 970, math.IsInf(est, 1))
 
-			m, terms, err := polygammaPlan(testCtx, est, test.tolExp)
+			m, terms, err := polygammaPlan(testCtx, test.order, est, test.tolExp)
 			assert.NoError(t, err)
 			assert.GreaterOrEqual(t, m, 0)
 
 			y := new(big.Int).Lsh(big.NewInt(1), test.shift)
 			y.Add(y, big.NewInt(int64(m)))
 
-			assert.True(t, exactlyBelow(t, y, terms, test.tolExp), "K = %d", terms)
+			assert.True(t, exactlyBelow(t, test.order, y, terms, test.tolExp), "K = %d", terms)
 		})
 	}
 }
 
 func TestPolygammaPlanTakesInfiniteEstimateAsALowerBound(t *testing.T) {
-	_, terms, err := polygammaPlan(testCtx, math.Inf(1), -100008)
-	assert.NoError(t, err)
+	for _, order := range []int{0, 1, 3} {
+		_, terms, err := polygammaPlan(testCtx, order, math.Inf(1), -100008)
+		assert.NoError(t, err)
 
-	// Any argument in the band is at least 2^964 > 2^960.
-	assert.True(t, exactlyBelow(t, new(big.Int).Lsh(big.NewInt(1), 964), terms, -100008))
+		// Any argument in the band is at least 2^964 > 2^960.
+		assert.True(t, exactlyBelow(t, order, new(big.Int).Lsh(big.NewInt(1), 964), terms, -100008))
+	}
 }
 
 func TestPolygammaPlanHonorsContext(t *testing.T) {
-	_, _, err := polygammaPlan(cancelledContext(), 5, -100)
+	_, _, err := polygammaPlan(cancelledContext(), 0, 5, -100)
 	assert.ErrorIs(t, err, context.Canceled)
 }

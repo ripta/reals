@@ -52,6 +52,11 @@ func digammaBench() Real {
 	return Digamma(FromRat(7, 2))
 }
 
+// polygammaBench builds a fresh polygamma of order 3 at the same argument.
+func polygammaBench() Real {
+	return Polygamma(3, FromRat(7, 2))
+}
+
 // reset empties the shared Bernoulli cache, so the next approximation pays for
 // filling it. Only benchmarks use it: in use, the cache fills once and stays.
 func (b *bernoulliEvens) reset() {
@@ -65,8 +70,21 @@ func (b *bernoulliEvens) reset() {
 func benchDigamma(b *testing.B, digits int, cold bool) {
 	b.Helper()
 
+	benchSeries(b, digammaBench, digits, cold)
+}
+
+// benchPolygamma is benchDigamma for a polygamma of order 3.
+func benchPolygamma(b *testing.B, digits int, cold bool) {
+	b.Helper()
+
+	benchSeries(b, polygammaBench, digits, cold)
+}
+
+func benchSeries(b *testing.B, build func() Real, digits int, cold bool) {
+	b.Helper()
+
 	if !cold {
-		benchTextOnce(b, digammaBench(), digits)
+		benchTextOnce(b, build(), digits)
 	}
 
 	b.ReportAllocs()
@@ -77,7 +95,7 @@ func benchDigamma(b *testing.B, digits int, cold bool) {
 			bernoulliCache.reset()
 		}
 
-		if got := benchTextOnce(b, digammaBench(), digits); len(got) == 0 {
+		if got := benchTextOnce(b, build(), digits); len(got) == 0 {
 			b.Fatal("empty text")
 		}
 	}
@@ -97,4 +115,20 @@ func BenchmarkDigammaCold50(b *testing.B) {
 
 func BenchmarkDigammaCold1000(b *testing.B) {
 	benchDigamma(b, 1000, true)
+}
+
+func BenchmarkPolygamma3At50(b *testing.B) {
+	benchPolygamma(b, 50, false)
+}
+
+func BenchmarkPolygamma3At1000(b *testing.B) {
+	benchPolygamma(b, 1000, false)
+}
+
+func BenchmarkPolygamma3ColdAt50(b *testing.B) {
+	benchPolygamma(b, 50, true)
+}
+
+func BenchmarkPolygamma3ColdAt1000(b *testing.B) {
+	benchPolygamma(b, 1000, true)
 }

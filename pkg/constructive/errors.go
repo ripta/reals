@@ -25,6 +25,10 @@ var (
 	// needs a positive one, such as the natural logarithm.
 	ErrNonPositive = errors.New("non-positive value out of domain")
 
+	// ErrNegativeOrder is returned when the order of a polygamma function is negative.
+	// Only non-negative orders are derivatives of the digamma function.
+	ErrNegativeOrder = errors.New("negative order out of domain")
+
 	// ErrBadApproximation is returned when an approximation callback breaks its
 	// contract, such as by returning a nil approximation with a nil error, or a
 	// slice of approximations of the wrong length.

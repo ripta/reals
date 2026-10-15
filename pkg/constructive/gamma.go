@@ -29,7 +29,7 @@ func Gamma(c Real) Real {
 	return newDeferredReduction("Gamma", c, -2, reduceGamma)
 }
 
-func reduceGamma(c Real, rough *big.Int) (Real, error) {
+func reduceGamma(_ context.Context, c Real, rough *big.Int) (Real, error) {
 	if rough.Cmp(big.NewInt(2)) < 0 {
 		// x < 1/2: reflect into the convergent region Γ(1−x).
 		reflected := Multiply(Sine(Multiply(Pi(), c)), Gamma(Subtract(One(), c)))
