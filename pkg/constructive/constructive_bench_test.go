@@ -47,39 +47,11 @@ func BenchmarkTextDeepExpLn1000(b *testing.B) {
 	benchText(b, 1000, deepExpLn)
 }
 
-// digammaBench builds a fresh digamma at a non-trivial rational argument.
-func digammaBench() Real {
-	return Digamma(FromRat(7, 2))
-}
-
-// polygammaBench builds a fresh polygamma of order 3 at the same argument.
-func polygammaBench() Real {
-	return Polygamma(3, FromRat(7, 2))
-}
-
-// reset empties the shared Bernoulli cache, so the next approximation pays for
-// filling it. Only benchmarks use it: in use, the cache fills once and stays.
-func (b *bernoulliEvens) reset() {
-	b.values.Store(nil)
-}
-
-// benchDigamma runs digamma over a fresh tree per iteration. A cold run empties the Bernoulli
-// cache first, so it measures the one-time cost of filling it. A warm run fills the cache
-// before timing starts, so it measures the cost of an approximation that finds the numbers
-// already there.
-func benchDigamma(b *testing.B, digits int, cold bool) {
-	b.Helper()
-
-	benchSeries(b, digammaBench, digits, cold)
-}
-
-// benchPolygamma is benchDigamma for a polygamma of order 3.
-func benchPolygamma(b *testing.B, digits int, cold bool) {
-	b.Helper()
-
-	benchSeries(b, polygammaBench, digits, cold)
-}
-
+// benchSeries benchmarks a function that sums the Bernoulli expansion, over a fresh tree per
+// iteration.
+// A cold run empties the Bernoulli cache first, so it measures the one-time cost of filling it.
+// A warm run fills the cache before timing starts, so it measures the cost of an approximation
+// that finds the numbers already there.
 func benchSeries(b *testing.B, build func() Real, digits int, cold bool) {
 	b.Helper()
 
@@ -101,34 +73,45 @@ func benchSeries(b *testing.B, build func() Real, digits int, cold bool) {
 	}
 }
 
-func BenchmarkDigamma50(b *testing.B) {
-	benchDigamma(b, 50, false)
+// freshDigamma builds a new Digamma tree at a non-trivial rational argument, and freshPolygamma3
+// a new polygamma tree of order 3 at the same argument. As with freshPi, no tree is shared, so
+// no approximation is cached.
+func freshDigamma() Real {
+	return Digamma(FromRat(7, 2))
 }
 
-func BenchmarkDigamma1000(b *testing.B) {
-	benchDigamma(b, 1000, false)
+func freshPolygamma3() Real {
+	return Polygamma(3, FromRat(7, 2))
 }
 
-func BenchmarkDigammaCold50(b *testing.B) {
-	benchDigamma(b, 50, true)
+func BenchmarkDigamma_50(b *testing.B) {
+	benchSeries(b, freshDigamma, 50, false)
 }
 
-func BenchmarkDigammaCold1000(b *testing.B) {
-	benchDigamma(b, 1000, true)
+func BenchmarkDigamma_1000(b *testing.B) {
+	benchSeries(b, freshDigamma, 1000, false)
 }
 
-func BenchmarkPolygamma3At50(b *testing.B) {
-	benchPolygamma(b, 50, false)
+func BenchmarkDigammaCold_50(b *testing.B) {
+	benchSeries(b, freshDigamma, 50, true)
 }
 
-func BenchmarkPolygamma3At1000(b *testing.B) {
-	benchPolygamma(b, 1000, false)
+func BenchmarkDigammaCold_1000(b *testing.B) {
+	benchSeries(b, freshDigamma, 1000, true)
 }
 
-func BenchmarkPolygamma3ColdAt50(b *testing.B) {
-	benchPolygamma(b, 50, true)
+func BenchmarkPolygamma3_50(b *testing.B) {
+	benchSeries(b, freshPolygamma3, 50, false)
 }
 
-func BenchmarkPolygamma3ColdAt1000(b *testing.B) {
-	benchPolygamma(b, 1000, true)
+func BenchmarkPolygamma3_1000(b *testing.B) {
+	benchSeries(b, freshPolygamma3, 1000, false)
+}
+
+func BenchmarkPolygamma3Cold_50(b *testing.B) {
+	benchSeries(b, freshPolygamma3, 50, true)
+}
+
+func BenchmarkPolygamma3Cold_1000(b *testing.B) {
+	benchSeries(b, freshPolygamma3, 1000, true)
 }

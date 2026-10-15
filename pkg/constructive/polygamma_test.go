@@ -2,124 +2,37 @@ package constructive
 
 import (
 	"context"
+	"fmt"
+	"maps"
 	"math"
 	"math/big"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// eulerMascheroni holds γ rounded half up to the given number of decimal digits
-// (OEIS A001620).
-var eulerMascheroni = map[int]string{
-	10:  "0.5772156649",
-	60:  "0.577215664901532860606512090082402431042159335939923598805767",
-	200: "0.57721566490153286060651209008240243104215933593992359880576723488486772677766467093694706329174674951463144724980708248096050401448654283622417399764492353625350033374293733773767394279259525824709492",
-}
+// This file holds the machinery shared by the Digamma and Polygamma tests, and the tests of the
+// order-generic engine: the plan, the shift, the term count, the coefficients, the cotangent
+// polynomials, the order validation, and the huge-order deadline behaviour. The values of
+// Digamma are in digamma_test.go, and those of the higher orders in
+// polygamma_higher_order_test.go. Both feed their tables to the runners below.
 
-type digammaIdentityTest struct {
+type identityTest struct {
 	name     string
 	build    func() Real
 	expected func() Real
 }
 
-// harmonic returns 1/1 + 1/2 + … + 1/n.
-func harmonic(n int) Real {
-	terms := make([]Real, n)
-	for i := range terms {
-		terms[i] = FromRat(1, i+1)
-	}
+// finePrecisions are the precisions at which an identity is checked on a fresh tree each.
+var finePrecisions = []int{-20, -300, -600}
 
-	return sumBalanced(terms)
-}
+// runIdentities checks each identity at 2^−60 and 2^−120 on one tree.
+func runIdentities(t *testing.T, tests []identityTest) {
+	t.Helper()
 
-var digammaIdentityTests = []digammaIdentityTest{
-	{
-		name:     "ψ(1/2) − ψ(1) = −2 ln 2",
-		build:    func() Real { return Subtract(Digamma(FromRat(1, 2)), Digamma(One())) },
-		expected: func() Real { return Negate(Multiply(Two(), Ln2())) },
-	},
-	{
-		name:     "ψ(1/4) − ψ(1) = −π/2 − 3 ln 2",
-		build:    func() Real { return Subtract(Digamma(FromRat(1, 4)), Digamma(One())) },
-		expected: func() Real { return Negate(Add(Divide(Pi(), Two()), Multiply(FromInt(3), Ln2()))) },
-	},
-	{
-		name:     "ψ(3/4) − ψ(1/4) = π",
-		build:    func() Real { return Subtract(Digamma(FromRat(3, 4)), Digamma(FromRat(1, 4))) },
-		expected: Pi,
-	},
-	{
-		name:     "ψ(3/2) − ψ(1/2) = 2",
-		build:    func() Real { return Subtract(Digamma(FromRat(3, 2)), Digamma(FromRat(1, 2))) },
-		expected: func() Real { return FromInt(2) },
-	},
-	{
-		name:     "ψ(−1/2) − ψ(1/2) = 2",
-		build:    func() Real { return Subtract(Digamma(FromRat(-1, 2)), Digamma(FromRat(1, 2))) },
-		expected: func() Real { return FromInt(2) },
-	},
-	{
-		name:     "ψ(−5/2) − ψ(1/2) = 46/15",
-		build:    func() Real { return Subtract(Digamma(FromRat(-5, 2)), Digamma(FromRat(1, 2))) },
-		expected: func() Real { return FromRat(46, 15) },
-	},
-	{
-		name:     "ψ(−1/10) − ψ(9/10) = 10",
-		build:    func() Real { return Subtract(Digamma(FromRat(-1, 10)), Digamma(FromRat(9, 10))) },
-		expected: func() Real { return FromInt(10) },
-	},
-	{
-		name:     "ψ(100) − ψ(1) = H₉₉",
-		build:    func() Real { return Subtract(Digamma(FromInt(100)), Digamma(One())) },
-		expected: func() Real { return harmonic(99) },
-	},
-	{
-		name:     "ψ(√2 + 1) − ψ(√2) = 1/√2",
-		build:    func() Real { return Subtract(Digamma(Add(Sqrt2(), One())), Digamma(Sqrt2())) },
-		expected: func() Real { return Inverse(Sqrt2()) },
-	},
-	{
-		name:     "ψ(1 − √2) − ψ(−√2) = −1/√2",
-		build:    func() Real { return Subtract(Digamma(Subtract(One(), Sqrt2())), Digamma(Negate(Sqrt2()))) },
-		expected: func() Real { return Negate(Inverse(Sqrt2())) },
-	},
-	{
-		name:     "ψ(1 − x) − ψ(x) = π·cot(πx) at x = 1/3",
-		build:    func() Real { return Subtract(Digamma(FromRat(2, 3)), Digamma(FromRat(1, 3))) },
-		expected: func() Real { return Divide(Pi(), Sqrt(FromInt(3))) },
-	},
-	{
-		name:     "an argument inside the float estimate's overflow band",
-		build:    func() Real { return Subtract(Digamma(ShiftLeft(One(), 970)), Multiply(FromInt(970), Ln2())) },
-		expected: func() Real { return FromInt(0) },
-	},
-	{
-		name:     "an argument beyond float64 range",
-		build:    func() Real { return Subtract(Digamma(Pow10(FromInt(400))), Ln(Pow10(FromInt(400)))) },
-		expected: func() Real { return FromInt(0) },
-	},
-}
-
-// asymptoticDigamma returns ln x − 1/(2x) − 1/(12x²) for an integer x, which is
-// within 1/(120x⁴) of ψ(x).
-func asymptoticDigamma(x int) Real {
-	return Subtract(
-		Subtract(Ln(FromInt(x)), FromRat(1, 2*x)),
-		Divide(One(), Multiply(FromInt(12), Square(FromInt(x)))),
-	)
-}
-
-// TestDigammaLargeArgument compares with the leading asymptotic terms, which are
-// good to 2^−80 here and no finer.
-func TestDigammaLargeArgument(t *testing.T) {
-	for _, p := range []int{-20, -60, -80} {
-		assertEqualAtPrecision(t, asymptoticDigamma(1000000), Digamma(FromInt(1000000)), p)
-	}
-}
-
-func TestDigammaIdentities(t *testing.T) {
-	for _, test := range digammaIdentityTests {
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			result := test.build()
 			expected := test.expected()
@@ -130,80 +43,78 @@ func TestDigammaIdentities(t *testing.T) {
 	}
 }
 
-// TestDigammaIdentitiesAtFinePrecision checks the same identities with a fresh
-// tree per precision, so a tree built for a coarse request does not hide a wrong
-// choice of shift at a fine one.
-func TestDigammaIdentitiesAtFinePrecision(t *testing.T) {
-	for _, test := range digammaIdentityTests {
+// runIdentitiesAtPrecisions checks each identity at every given precision, with a fresh tree
+// per precision, so a tree built for a coarse request does not hide a wrong choice of shift or
+// term count at a fine one.
+func runIdentitiesAtPrecisions(t *testing.T, tests []identityTest, precisions ...int) {
+	t.Helper()
+
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			for _, p := range []int{-20, -300, -600} {
+			for _, p := range precisions {
 				assertEqualAtPrecision(t, test.expected(), test.build(), p)
 			}
 		})
 	}
 }
 
-type digammaTextTest struct {
+// textTest compares a tree's decimal text with the expected text at each listed digit count.
+type textTest struct {
 	name  string
 	build func() Real
+	want  map[int]string
 }
 
-// TestDigammaEulerMascheroni compares against γ from OEIS A001620:
-// ψ(1) = −γ and ψ(1/2) = −γ − 2 ln 2.
-func TestDigammaEulerMascheroni(t *testing.T) {
-	tests := []digammaTextTest{
-		{
-			name:  "ψ(1) = −γ",
-			build: func() Real { return Negate(Digamma(One())) },
-		},
-		{
-			name:  "ψ(1/2) = −γ − 2 ln 2",
-			build: func() Real { return Negate(Add(Digamma(FromRat(1, 2)), Multiply(Two(), Ln2()))) },
-		},
-		{
-			name:  "ψ(2) = 1 − γ",
-			build: func() Real { return Subtract(One(), Digamma(Two())) },
-		},
-		{
-			name:  "ψ(−1/2) = 2 − γ − 2 ln 2",
-			build: func() Real { return Negate(Subtract(Add(Digamma(FromRat(-1, 2)), Multiply(Two(), Ln2())), Two())) },
-		},
-	}
+// runTextTests renders each tree at every digit count of its want, coarse to fine, on one tree.
+func runTextTests(t *testing.T, tests []textTest) {
+	t.Helper()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			node := test.build()
-			for _, digits := range []int{10, 60, 200} {
-				assert.Equal(t, eulerMascheroni[digits], mustText(t, node, digits, 10))
+			for _, digits := range slices.Sorted(maps.Keys(test.want)) {
+				assert.Equal(t, test.want[digits], mustText(t, node, digits, 10))
 			}
 		})
 	}
 }
 
-func TestDigammaValues(t *testing.T) {
-	assert.Equal(t, "-0.5772156649", mustText(t, Digamma(One()), 10, 10))
-	assert.Equal(t, "-0.5772156649", mustText(t, Digamma(FromRat(2, 2)), 10, 10))
+// runTextTestsFresh is runTextTests with a fresh tree per digit count.
+func runTextTestsFresh(t *testing.T, tests []textTest) {
+	t.Helper()
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, digits := range slices.Sorted(maps.Keys(test.want)) {
+				assert.Equal(t, test.want[digits], mustText(t, test.build(), digits, 10))
+			}
+		})
+	}
 }
 
-type digammaCoarseTest struct {
+type coarseTest struct {
 	name      string
 	input     Real
 	precision int
 }
 
-// TestDigammaCoarsePrecision checks that a request coarser than one unit still
-// returns an answer, without a shift or any series term.
-func TestDigammaCoarsePrecision(t *testing.T) {
-	tests := []digammaCoarseTest{
-		{name: "ψ(50) at 2^3", input: FromInt(50), precision: 3},
-		{name: "ψ(1) at 2^0", input: One(), precision: 0},
-		{name: "ψ(−1/2) at 2^2", input: FromRat(-1, 2), precision: 2},
-	}
+// coarsePrecisionTests are requests coarser than one unit, at an integer, at a series argument
+// of one, and at a reflected argument.
+var coarsePrecisionTests = []coarseTest{
+	{name: "x = 50 at 2^3", input: FromInt(50), precision: 3},
+	{name: "x = 1 at 2^0", input: One(), precision: 0},
+	{name: "x = −1/2 at 2^2", input: FromRat(-1, 2), precision: 2},
+}
+
+// runCoarsePrecision checks that a request coarser than one unit still returns an answer,
+// without a shift or any series term.
+func runCoarsePrecision(t *testing.T, fn func(Real) Real, tests []coarseTest) {
+	t.Helper()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := mustApproximate(t, Digamma(test.input), test.precision)
-			fine := mustApproximate(t, Digamma(test.input), test.precision-20)
+			got := mustApproximate(t, fn(test.input), test.precision)
+			fine := mustApproximate(t, fn(test.input), test.precision-20)
 
 			// Each result is within one unit of its own precision.
 			diff := new(big.Int).Sub(got, scale(fine, -20))
@@ -212,26 +123,9 @@ func TestDigammaCoarsePrecision(t *testing.T) {
 	}
 }
 
-func TestDigammaAsConstruction(t *testing.T) {
-	assert.Equal(t, "Digamma(Int(3))", Digamma(FromInt(3)).asConstruction())
-	assert.Equal(t, "Digamma(Int(3))", newPolygammaSeries(0, FromInt(3)).asConstruction())
-}
-
-func TestDigammaHonorsContext(t *testing.T) {
-	_, err := Approximate(cancelledContext(), Digamma(FromInt(5)), -2000)
-	assert.ErrorIs(t, err, context.Canceled)
-
-	_, err = Approximate(cancelledContext(), Digamma(FromRat(-1, 2)), -2000)
-	assert.ErrorIs(t, err, context.Canceled)
-}
-
-// TestDigammaAtThousandDigits exercises the shift and the Bernoulli cache at the scale where
-// they matter: ψ(100) − ψ(1) = H₉₉ at about 1000 digits.
-func TestDigammaAtThousandDigits(t *testing.T) {
-	assertEqualAtPrecision(t, harmonic(99), Subtract(Digamma(FromInt(100)), Digamma(One())), -3400)
-}
-
-type digammaBoundaryTest struct {
+// boundaryBranchTest is an argument x = num/denom, and whether the first approximation takes
+// it to the series node and not to the reflection.
+type boundaryBranchTest struct {
 	name   string
 	num    int
 	denom  int
@@ -240,7 +134,7 @@ type digammaBoundaryTest struct {
 
 // The first approximation of an argument chooses between the series node and the reflection.
 // The rough approximation rounds, so the choice flips between 3/10 and 2/5 and not at 1/2.
-var digammaBoundaryTests = []digammaBoundaryTest{
+var boundaryBranchTests = []boundaryBranchTest{
 	{name: "1/4 reflects to 3/4", num: 1, denom: 4},
 	{name: "3/10 reflects to 7/10", num: 3, denom: 10},
 	{name: "2/5 reaches the series below 1/2", num: 2, denom: 5, series: true},
@@ -249,24 +143,57 @@ var digammaBoundaryTests = []digammaBoundaryTest{
 	{name: "51/100 reaches the series", num: 51, denom: 100, series: true},
 }
 
-// TestDigammaBoundaryBranches checks both sides of the reflection threshold, using
-// ψ(x+1) − ψ(x) = 1/x, whose two digammas take different branches when one side is reflected.
-func TestDigammaBoundaryBranches(t *testing.T) {
-	for _, test := range digammaBoundaryTests {
+// runBoundaryBranches checks both sides of the reflection threshold for fn, the polygamma
+// function of the given order. It uses ψ⁽ⁿ⁾(x+1) − ψ⁽ⁿ⁾(x) = (−1)ⁿ·n!/xⁿ⁺¹, whose two terms
+// take different branches when one side is reflected.
+func runBoundaryBranches(t *testing.T, order int, fn func(Real) Real) {
+	t.Helper()
+
+	for _, test := range boundaryBranchTests {
 		t.Run(test.name, func(t *testing.T) {
-			node := Digamma(FromRat(test.num, test.denom))
+			node := fn(FromRat(test.num, test.denom))
 			mustApproximate(t, node, -10)
 
-			_, series := node.(*deferredReduction).reduced.Load().root.(*polygammaSeries)
-			assert.Equal(t, test.series, series)
+			series, ok := node.(*deferredReduction).reduced.Load().root.(*polygammaSeries)
+			assert.Equal(t, test.series, ok)
 
-			lhs := Subtract(Digamma(FromRat(test.num+test.denom, test.denom)), Digamma(FromRat(test.num, test.denom)))
-			rhs := FromRat(test.denom, test.num)
+			if ok {
+				assert.Equal(t, order, series.order)
+			}
+
+			x := FromRat(test.num, test.denom)
+			lhs := Subtract(fn(FromRat(test.num+test.denom, test.denom)), fn(x))
+			rhs := Multiply(factorialSigned(order), Inverse(powInt(x, uint(order+1))))
 			for _, p := range []int{-60, -400} {
 				assertEqualAtPrecision(t, rhs, lhs, p)
 			}
 		})
 	}
+}
+
+// assertHonorsContext checks that a cancelled context ends the approximation of fn at a series
+// argument and at a reflected one.
+func assertHonorsContext(t *testing.T, fn func(Real) Real) {
+	t.Helper()
+
+	for _, arg := range []Real{FromInt(5), FromRat(-1, 2)} {
+		_, err := Approximate(cancelledContext(), fn(arg), -2000)
+		assert.ErrorIs(t, err, context.Canceled)
+	}
+}
+
+// factorialSigned returns (−1)ⁿ·n! as an exact Real.
+func factorialSigned(n int) Real {
+	f := big.NewInt(1)
+	for i := 2; i <= n; i++ {
+		f.Mul(f, big.NewInt(int64(i)))
+	}
+
+	if n%2 == 1 {
+		f.Neg(f)
+	}
+
+	return FromBigInt(f)
 }
 
 // exactlyBelow reports whether the first neglected term of order n at the integer y, with K
@@ -362,4 +289,324 @@ func TestPolygammaPlanTakesInfiniteEstimateAsALowerBound(t *testing.T) {
 func TestPolygammaPlanHonorsContext(t *testing.T) {
 	_, _, err := polygammaPlan(cancelledContext(), 0, 5, -100)
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// TestPolygammaZeroIsDigamma checks that order zero is Digamma, in value and in construction.
+func TestPolygammaZeroIsDigamma(t *testing.T) {
+	assert.Equal(t, Digamma(FromInt(3)).asConstruction(), Polygamma(0, FromInt(3)).asConstruction())
+
+	for _, arg := range []func() Real{
+		func() Real { return FromInt(3) },
+		func() Real { return FromRat(-1, 2) },
+		Sqrt2,
+	} {
+		assertEqualAtPrecision(t, Digamma(arg()), Polygamma(0, arg()), -200)
+	}
+}
+
+type negativeOrderTest struct {
+	name  string
+	order int
+}
+
+var negativeOrderTests = []negativeOrderTest{
+	{name: "−1", order: -1},
+	{name: "−2", order: -2},
+	{name: "−1000", order: -1000},
+	{name: "the smallest int", order: math.MinInt},
+}
+
+func TestPolygammaNegativeOrder(t *testing.T) {
+	for _, test := range negativeOrderTests {
+		t.Run(test.name, func(t *testing.T) {
+			// A leaf that fails when it is approximated shows that neither construction nor the
+			// failing approximation touches the argument.
+			leaf := &failingReal{err: errLeaf}
+
+			node := Polygamma(test.order, leaf)
+			assert.NotNil(t, node)
+			assert.Zero(t, leaf.calls)
+			assert.Nil(t, node.tracker().latest())
+			assert.Equal(t, fmt.Sprintf("Polygamma(%d, Failing())", test.order), AsConstruction(node))
+
+			for i := 0; i < 2; i++ {
+				_, err := Approximate(testCtx, node, -20)
+				assert.ErrorIs(t, err, ErrNegativeOrder)
+				assert.Nil(t, node.tracker().latest())
+			}
+
+			_, err := Text(testCtx, node, 10, 10)
+			assert.ErrorIs(t, err, ErrNegativeOrder)
+			assert.Zero(t, leaf.calls)
+		})
+	}
+}
+
+func TestPolygammaNegativeOrderOfAValue(t *testing.T) {
+	for _, arg := range []Real{FromInt(3), FromRat(-1, 2), Sqrt2(), FromInt(0)} {
+		_, err := Approximate(testCtx, Polygamma(-1, arg), -20)
+		assert.ErrorIs(t, err, ErrNegativeOrder)
+	}
+
+	// The failure also surfaces through a tree.
+	_, err := Approximate(testCtx, Add(One(), Polygamma(-3, Two())), -20)
+	assert.ErrorIs(t, err, ErrNegativeOrder)
+}
+
+func TestPolygammaNegativeOrderHonorsContext(t *testing.T) {
+	_, err := Approximate(cancelledContext(), Polygamma(-1, Two()), -20)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.NotErrorIs(t, err, ErrNegativeOrder)
+}
+
+type cotangentPolynomialTest struct {
+	order  int
+	coeffs []int64
+}
+
+// Each row holds the coefficients of Pₙ, lowest degree first, derived by hand from
+// P₀(t) = t and Pₖ₊₁(t) = −(1 + t²)·Pₖ'(t).
+var cotangentPolynomialTests = []cotangentPolynomialTest{
+	{order: 0, coeffs: []int64{0, 1}},
+	{order: 1, coeffs: []int64{-1, 0, -1}},
+	{order: 2, coeffs: []int64{0, 2, 0, 2}},
+	{order: 3, coeffs: []int64{-2, 0, -8, 0, -6}},
+	{order: 4, coeffs: []int64{0, 16, 0, 40, 0, 24}},
+}
+
+func TestCotangentPolynomial(t *testing.T) {
+	for _, test := range cotangentPolynomialTests {
+		t.Run(fmt.Sprintf("P_%d", test.order), func(t *testing.T) {
+			got, err := cotangentPolynomial(testCtx, test.order)
+			assert.NoError(t, err)
+			assert.Len(t, got, len(test.coeffs))
+
+			for i, want := range test.coeffs {
+				assert.Zero(t, got[i].Cmp(big.NewInt(want)), "coefficient of t^%d is %s", i, got[i])
+			}
+		})
+	}
+}
+
+// TestCotangentPolynomialShape checks what the recurrence guarantees at any order: degree n+1,
+// the parity of n+1, and a nonzero leading coefficient.
+func TestCotangentPolynomialShape(t *testing.T) {
+	for _, order := range []int{0, 1, 2, 5, 12, 40} {
+		p, err := cotangentPolynomial(testCtx, order)
+		assert.NoError(t, err)
+		assert.Len(t, p, order+2)
+		assert.NotZero(t, p[order+1].Sign())
+
+		for i, c := range p {
+			if (i+order+1)%2 == 1 {
+				assert.Zero(t, c.Sign(), "P_%d has a t^%d term", order, i)
+			}
+		}
+	}
+}
+
+// TestCotangentDerivativeValue checks the tree against the polynomial evaluated at a rational.
+func TestCotangentDerivativeValue(t *testing.T) {
+	for _, order := range []int{0, 1, 2, 3, 6} {
+		t.Run(fmt.Sprintf("P_%d", order), func(t *testing.T) {
+			x := big.NewRat(3, 7)
+
+			want := new(big.Rat)
+			power := big.NewRat(1, 1)
+			poly, err := cotangentPolynomial(testCtx, order)
+			assert.NoError(t, err)
+
+			for _, c := range poly {
+				want.Add(want, new(big.Rat).Mul(new(big.Rat).SetInt(c), power))
+				power.Mul(power, x)
+			}
+
+			expected := Divide(FromBigInt(want.Num()), FromBigInt(want.Denom()))
+
+			got, err := cotangentDerivative(testCtx, order, FromRat(3, 7))
+			assert.NoError(t, err)
+			assertEqualAtPrecision(t, expected, got, -100)
+		})
+	}
+}
+
+type polygammaCoefficientTest struct {
+	order int
+	k     int
+}
+
+// TestPolygammaCoefficient checks c_k = B₂ₖ·(2k+n−1)!/(2k)! against an independent exact
+// computation with factorials.
+func TestPolygammaCoefficient(t *testing.T) {
+	var tests []polygammaCoefficientTest
+	for _, order := range []int{0, 1, 2, 3, 7} {
+		for _, k := range []int{1, 2, 3, 10, 25} {
+			tests = append(tests, polygammaCoefficientTest{order: order, k: k})
+		}
+	}
+
+	factorial := func(n int) *big.Int { return new(big.Int).MulRange(1, int64(n)) }
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("n = %d, k = %d", test.order, test.k), func(t *testing.T) {
+			b := mustBernoulliEven(t, bernoulliCache, test.k)
+
+			// (2k+n−1)! / (2k)!, with 0! = 1 so that n = 0 gives (2k−1)!/(2k)!.
+			want := new(big.Rat).SetFrac(factorial(2*test.k+test.order-1), factorial(2*test.k))
+			want.Mul(want, b)
+
+			got, err := polygammaCoefficient(testCtx, test.order, test.k)
+			assert.NoError(t, err)
+
+			expected := Divide(FromBigInt(want.Num()), FromBigInt(want.Denom()))
+			assertEqualAtPrecision(t, expected, got, -200)
+		})
+	}
+}
+
+// TestPolygammaShiftRetriesWhenTheTermsTurnAround drives the retry in the shift search. A
+// starting target of one is too small for a high order, so the first round's terms turn around
+// before the tolerance, and the search shifts further until they do not.
+func TestPolygammaShiftRetriesWhenTheTermsTurnAround(t *testing.T) {
+	tests := []struct {
+		name   string
+		order  int
+		tolExp int
+	}{
+		{name: "order 1", order: 1, tolExp: -300},
+		{name: "order 3", order: 3, tolExp: -600},
+		{name: "order 20", order: 20, tolExp: -600},
+		{name: "order 60", order: 60, tolExp: -200},
+	}
+
+	const lower = 1 - 0x1p-20 // a lower bound of the argument 1
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// The first round, with the starting target, must fail for the test to mean anything.
+			m0 := 1
+			_, ok, err := polygammaTerms(testCtx, test.order, lower+float64(m0), test.tolExp)
+			assert.NoError(t, err)
+			assert.False(t, ok)
+
+			m, terms, err := polygammaShift(testCtx, test.order, lower, test.tolExp, 1)
+			assert.NoError(t, err)
+			assert.Greater(t, m, m0)
+
+			y := big.NewInt(int64(1 + m))
+			assert.True(t, exactlyBelow(t, test.order, y, terms, test.tolExp), "K = %d", terms)
+		})
+	}
+}
+
+func TestPolygammaShiftBeyondTheIntegerRange(t *testing.T) {
+	_, _, err := polygammaShift(testCtx, 0, 0.5, -100, 0x1p70)
+	assert.Equal(t, ErrInvalidPrecision, err)
+}
+
+// TestPowIntExponentBeyondInt checks that the exponent n+1 of the largest int order does not
+// wrap: the power of one is one at any exponent, and the squaring recursion is at most 64 deep.
+func TestPowIntExponentBeyondInt(t *testing.T) {
+	for _, k := range []uint{1, 2, 3, uint(math.MaxInt), uint(math.MaxInt) + 1, math.MaxUint} {
+		assertEqualAtPrecision(t, One(), powInt(One(), k), -20)
+	}
+}
+
+type polygammaDeadlineTest struct {
+	name      string
+	order     int
+	arg       func() Real
+	reflected bool // the reduction itself is cancelled, so nothing is memoized
+}
+
+// The orders are far past what finishes in the deadline. The series arguments take the shift,
+// the Bernoulli coefficients and the factorials. The reflected ones start with the
+// cotangent-derivative polynomial. MaxInt also checks that n+1 and 2k+n cannot wrap.
+var polygammaDeadlineTests = []polygammaDeadlineTest{
+	{name: "series, n = 20000", order: 20000, arg: func() Real { return FromInt(3) }},
+	{name: "reflected, n = 5000", order: 5000, arg: func() Real { return FromRat(-1, 2) }, reflected: true},
+	{name: "reflected, n = 50000", order: 50000, arg: func() Real { return FromRat(-1, 2) }, reflected: true},
+	{name: "series, n = 10⁹", order: 1000000000, arg: func() Real { return FromRat(7, 2) }},
+	{name: "reflected, n = 10⁹", order: 1000000000, arg: func() Real { return FromRat(-1, 2) }, reflected: true},
+	{name: "series, n = MaxInt", order: math.MaxInt, arg: func() Real { return FromInt(3) }},
+	{name: "reflected, n = MaxInt", order: math.MaxInt, arg: func() Real { return FromRat(-1, 2) }, reflected: true},
+	{name: "series, n = MaxInt, argument 2/5", order: math.MaxInt, arg: func() Real { return FromRat(2, 5) }},
+}
+
+// TestPolygammaHugeOrderHonorsDeadline checks that a very large order is slow and not stuck:
+// the context's error comes back soon after the deadline, from every loop that scales with the
+// order, and a later approximation with a live context is not poisoned by the failure.
+func TestPolygammaHugeOrderHonorsDeadline(t *testing.T) {
+	const deadline = 100 * time.Millisecond
+
+	for _, test := range polygammaDeadlineTests {
+		t.Run(test.name, func(t *testing.T) {
+			node := Polygamma(test.order, test.arg())
+
+			ctx, cancel := context.WithTimeout(testCtx, deadline)
+			defer cancel()
+
+			start := time.Now()
+			_, err := Approximate(ctx, node, -20)
+			elapsed := time.Since(start)
+
+			assert.ErrorIs(t, err, context.DeadlineExceeded)
+			assert.Less(t, elapsed, 5*time.Second)
+			assert.Nil(t, node.tracker().latest())
+
+			// A cancelled reduction memoizes nothing. A series order is reduced at once, and only
+			// its series is cancelled.
+			tree := node.(*deferredReduction)
+			assert.Equal(t, !test.reflected, tree.reduced.Load() != nil)
+		})
+	}
+}
+
+func TestPolygammaHugeOrderCancelledContext(t *testing.T) {
+	for _, test := range polygammaDeadlineTests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Approximate(cancelledContext(), Polygamma(test.order, test.arg()), -20)
+			assert.ErrorIs(t, err, context.Canceled)
+		})
+	}
+}
+
+// TestPolygammaLoopsFollowTheContext calls the helpers that scale with the order directly, so
+// a loop that stopped checking the context would show up here by name.
+func TestPolygammaLoopsFollowTheContext(t *testing.T) {
+	t.Run("cotangentPolynomial", func(t *testing.T) {
+		_, err := cotangentPolynomial(cancelledContext(), 30)
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("cotangentDerivative", func(t *testing.T) {
+		_, err := cotangentDerivative(cancelledContext(), 30, Two())
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("reducePolygamma", func(t *testing.T) {
+		_, err := reducePolygamma(cancelledContext(), 30, FromRat(-1, 2), big.NewInt(-2))
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("log2FactorialRatio, running", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(testCtx, 50*time.Millisecond)
+		defer cancel()
+
+		_, err := log2FactorialRatio(ctx, math.MaxInt, 1)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("polygammaCoefficient, running", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(testCtx, 50*time.Millisecond)
+		defer cancel()
+
+		_, err := polygammaCoefficient(ctx, math.MaxInt, 1)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("expectedPolygammaTerms", func(t *testing.T) {
+		_, err := expectedPolygammaTerms(cancelledContext(), 0, 20, -100)
+		assert.ErrorIs(t, err, context.Canceled)
+	})
 }

@@ -10,6 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// reset empties the cache, so the next call pays for filling it. In use the cache fills once
+// and stays, so only tests and benchmarks need this.
+func (b *bernoulliEvens) reset() {
+	b.values.Store(nil)
+}
+
 type bernoulliTest struct {
 	index    int
 	expected *big.Rat

@@ -60,11 +60,7 @@ const (
 //
 // The reflection is chosen on the first approximation, not here.
 func Digamma(c Real) Real {
-	reduce := func(ctx context.Context, c Real, rough *big.Int) (Real, error) {
-		return reducePolygamma(ctx, 0, c, rough)
-	}
-
-	return newDeferredReduction("Digamma", c, -2, reduce)
+	return newDeferredReduction("Digamma", c, -2, polygammaReducer(0))
 }
 
 // Polygamma computes the polygamma function ψ⁽ⁿ⁾(c), the nth derivative of the digamma
@@ -94,11 +90,15 @@ func Polygamma(n int, c Real) Real {
 		return Digamma(c)
 	}
 
-	reduce := func(ctx context.Context, c Real, rough *big.Int) (Real, error) {
+	return newDeferredReductionLead("Polygamma", fmt.Sprintf("%d, ", n), c, -2, polygammaReducer(n))
+}
+
+// polygammaReducer returns the reduction of an argument for order n, which is what the
+// deferred node runs on its first approximation.
+func polygammaReducer(n int) reducer {
+	return func(ctx context.Context, c Real, rough *big.Int) (Real, error) {
 		return reducePolygamma(ctx, n, c, rough)
 	}
-
-	return newDeferredReductionLead("Polygamma", fmt.Sprintf("%d, ", n), c, -2, reduce)
 }
 
 // negativeOrderPolygamma is the polygamma function of a negative order. It fails every

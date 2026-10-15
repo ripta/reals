@@ -22,6 +22,11 @@ var ErrNonPositive = constructive.ErrNonPositive
 // layer.
 var ErrNegative = constructive.ErrNegative
 
+// ErrNegativeOrder indicates that the order of a polygamma function is negative.
+// It is the same value as constructive.ErrNegativeOrder, so errors.Is matches a
+// failure raised in either layer.
+var ErrNegativeOrder = constructive.ErrNegativeOrder
+
 // ErrInvalidBase indicates a logarithm base that is positive but equal to one,
 // for which the logarithm is undefined.
 var ErrInvalidBase = errors.New("base must not be equal to one")
@@ -38,11 +43,6 @@ var ErrUndefinedAtOrigin = errors.New("atan2 is undefined at the origin")
 // integer, where it is undefined. Gamma, Digamma, and Polygamma have their poles
 // there.
 var ErrNonPositiveInteger = errors.New("argument must not be a non-positive integer")
-
-// ErrNegativeOrder indicates that the order of a polygamma function is negative.
-// It is the same value as constructive.ErrNegativeOrder, so errors.Is matches a
-// failure raised in either layer.
-var ErrNegativeOrder = constructive.ErrNegativeOrder
 
 // halfPi is π/2, computed once and reused by the inverse-trig endpoints.
 var halfPi = sync.OnceValue(func() *Real {
