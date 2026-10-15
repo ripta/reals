@@ -119,8 +119,8 @@ func TestShift(t *testing.T) {
 	assertRationalEqual(t, New64(3, 4096), New64(3, 4).ShiftRight(10)) // 3/4 / 1024 = 3/4096
 }
 
-// normalizedPow is the reference power: SetFrac normalizes the raised numerator
-// and denominator, and a negative exponent swaps them first.
+// normalizedPow is the reference power: SetFrac normalizes the raised numerator and denominator,
+// and a negative exponent swaps them first.
 func normalizedPow(a, b, e int64) *big.Rat {
 	n, d := big.NewInt(a), big.NewInt(b)
 	if e < 0 {
@@ -234,8 +234,8 @@ func TestNumber_PowPrecisionLimit(t *testing.T) {
 		t.Errorf("expected ErrPrecisionOverflow and no result, got %v and %v", got, err)
 	}
 
-	// The estimate uses the larger of the numerator and denominator bit lengths,
-	// and the magnitude of a negative exponent.
+	// The estimate uses the larger of the numerator and denominator bit lengths, and the magnitude
+	// of a negative exponent.
 	got, err = New64(1, 7).Pow(constructive.WithPrecisionLimit(testCtx, 30), big.NewInt(-10))
 	if err != nil {
 		t.Errorf("expected 10 * 3 bits to fit a limit of 30, got %v", err)
@@ -311,8 +311,7 @@ func TestNumber_PowWithoutLimit(t *testing.T) {
 	}
 }
 
-// failingContext reports no error for its first ok calls to Err, then reports
-// context.Canceled.
+// failingContext reports no error for its first ok calls to Err, then reports context.Canceled.
 type failingContext struct {
 	context.Context
 	ok int

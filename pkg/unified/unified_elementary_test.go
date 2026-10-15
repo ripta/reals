@@ -164,6 +164,7 @@ var powTests = []powTest{
 	{name: "Pow(-2,1/2)", base: rat(-2, 1), exponent: Half(), wantErr: ErrNonPositive},
 }
 
+// TestPow covers Pow in general. The tests specific to squaring are in unified_pow_test.go.
 func TestPow(t *testing.T) {
 	for _, test := range powTests {
 		t.Run(test.name, func(t *testing.T) {

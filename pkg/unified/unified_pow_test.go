@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// linearPow is the reference power: repeated multiplication, one factor per unit
-// of the exponent, inverted once at the end for a negative exponent.
+// linearPow is the reference power: repeated multiplication, one factor per unit of the exponent,
+// inverted once at the end for a negative exponent.
 func linearPow(u *Real, e int) *Real {
 	result := One()
 	for i := 0; i < e || i < -e; i++ {
@@ -108,8 +108,8 @@ func TestPowLargeExponentIdentities(t *testing.T) {
 	}
 }
 
-// TestPowIdentityComparisonDiscriminates pins that the precisions above tell a
-// wrong exponent and zero from the right answer.
+// TestPowIdentityComparisonDiscriminates pins that the precisions above tell a wrong exponent and
+// zero from the right answer.
 func TestPowIdentityComparisonDiscriminates(t *testing.T) {
 	expected := New(nil, rational.New(big.NewInt(1), new(big.Int).Lsh(big.NewInt(1), 100)))
 	for _, wrong := range []*Real{powInt(t, testCtx, irr(constructive.Sqrt2()), -199), Zero()} {
@@ -152,8 +152,8 @@ func TestPowLargeRationalExponentIsExact(t *testing.T) {
 }
 
 func TestPowWithoutDeepRecursion(t *testing.T) {
-	// A linear chain of 100000 multiplications needs far more than this much
-	// stack to approximate, so a regression ends in a stack overflow.
+	// A linear chain of 100000 multiplications needs far more than this much stack to approximate,
+	// so a regression ends in a stack overflow.
 	defer debug.SetMaxStack(debug.SetMaxStack(8 << 20))
 
 	ctx, cancel := context.WithTimeout(testCtx, time.Minute)
@@ -218,8 +218,8 @@ func TestPowPrecisionLimitExemptions(t *testing.T) {
 	assert.NoError(t, err)
 	assertEqualAtPrecision(t, Zero(), result, -10)
 
-	// An irrational base has no rational factor to bound. Only a tree of about
-	// 40 nodes is built, and approximating it is what the limit then governs.
+	// An irrational base has no rational factor to bound. Only a tree of about 40 nodes is built,
+	// and approximating it is what the limit then governs.
 	result, err = irr(constructive.Sqrt2()).Pow(ctx, trillion)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -241,6 +241,32 @@ func TestPowCancelledContext(t *testing.T) {
 		// The context error is returned as it is, not wrapped.
 		assert.True(t, err == context.Canceled, "expected context.Canceled, got %v", err)
 	}
+}
+
+// failingContext reports no error for its first ok calls to Err, then reports context.Canceled.
+type failingContext struct {
+	context.Context
+	ok int
+}
+
+func (c *failingContext) Err() error {
+	if c.ok > 0 {
+		c.ok--
+		return nil
+	}
+	return context.Canceled
+}
+
+func TestPowCancelledInSquaringLoop(t *testing.T) {
+	// An irrational base has a rational factor of one, which costs the rational step a single
+	// check, on entry. The loop over the four bits of 13 then passes its checks for bits 0 and 1
+	// and fails at bit 2, so the error can only come from inside the loop.
+	ctx := &failingContext{Context: testCtx, ok: 3}
+
+	result, err := irr(constructive.Sqrt2()).Pow(ctx, rat(13, 1))
+	assert.Nil(t, result)
+	assert.True(t, err == context.Canceled, "expected context.Canceled, got %v", err)
+	assert.Equal(t, 0, ctx.ok)
 }
 
 func TestPowOverflowIsNotAContextError(t *testing.T) {
