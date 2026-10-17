@@ -22,9 +22,25 @@ var deferredBuildTests = []deferredBuildTest{
 	{Name: "Tangent", Build: Tangent},
 	{Name: "Arctangent", Build: Arctangent},
 	{Name: "Gamma", Build: Gamma},
+	{Name: "Digamma", Build: Digamma},
+	{Name: "Digamma, reflected", Build: digammaReflected},
+	{Name: "Polygamma", Build: func(arg Real) Real { return Polygamma(3, arg) }},
+	{Name: "Polygamma, reflected", Build: func(arg Real) Real { return polygammaReflected(3, arg) }},
+	{Name: "Polygamma, even order, reflected", Build: func(arg Real) Real { return polygammaReflected(2, arg) }},
 	{Name: "Pow, base", Build: func(arg Real) Real { return Pow(arg, FromInt(2)) }},
 	{Name: "Pow, exponent", Build: func(arg Real) Real { return Pow(FromInt(2), arg) }},
 	{Name: "Pow10", Build: Pow10},
+}
+
+// digammaReflected builds a digamma whose argument is below 1/2 and not an
+// integer, so the first approximation takes the reflection.
+func digammaReflected(arg Real) Real {
+	return Digamma(Subtract(FromRat(1, 2), arg))
+}
+
+// polygammaReflected is digammaReflected for a polygamma of the given order.
+func polygammaReflected(order int, arg Real) Real {
+	return Polygamma(order, Subtract(FromRat(1, 2), arg))
 }
 
 func TestDeferredConstructionDoesNotApproximate(t *testing.T) {
@@ -100,6 +116,11 @@ var reductionMemoTests = []reductionMemoTest{
 	{Name: "Cosine", Build: Cosine},
 	{Name: "Arctangent", Build: Arctangent},
 	{Name: "Gamma", Build: Gamma},
+	{Name: "Digamma", Build: Digamma},
+	{Name: "Digamma, reflected", Build: digammaReflected},
+	{Name: "Polygamma", Build: func(arg Real) Real { return Polygamma(3, arg) }},
+	{Name: "Polygamma, reflected", Build: func(arg Real) Real { return polygammaReflected(3, arg) }},
+	{Name: "Polygamma, even order, reflected", Build: func(arg Real) Real { return polygammaReflected(2, arg) }},
 }
 
 func TestDeferredReductionIsMemoizedOnlyOnSuccess(t *testing.T) {
@@ -146,6 +167,30 @@ var constructionTests = []constructionTest{
 		Build:    func() Real { return Ln(FromInt(10)) },
 		Before:   "Ln(Int(10))",
 		AfterHas: "Ln(",
+	},
+	{
+		Name:     "Digamma of a mid-range argument",
+		Build:    func() Real { return Digamma(FromInt(3)) },
+		Before:   "Digamma(Int(3))",
+		AfterHas: "Digamma(Int(3))",
+	},
+	{
+		Name:     "Digamma of a negative argument",
+		Build:    func() Real { return Digamma(FromRat(-1, 2)) },
+		Before:   "Digamma(Multiply(Int(-1), Inverse(Int(2))))",
+		AfterHas: `Digamma(Add(Named("1", Int(1)), `,
+	},
+	{
+		Name:     "Polygamma of a mid-range argument",
+		Build:    func() Real { return Polygamma(3, FromInt(3)) },
+		Before:   "Polygamma(3, Int(3))",
+		AfterHas: "Polygamma(3, Int(3))",
+	},
+	{
+		Name:     "Polygamma of a negative argument",
+		Build:    func() Real { return Polygamma(3, FromRat(-1, 2)) },
+		Before:   "Polygamma(3, Multiply(Int(-1), Inverse(Int(2))))",
+		AfterHas: `Polygamma(3, Add(Named("1", Int(1)), `,
 	},
 }
 
@@ -265,6 +310,26 @@ var reductionValueTests = []reductionValueTest{
 	{Name: "gamma(-1/2)", Build: func() Real { return Gamma(FromRat(-1, 2)) }, Expected: map[int]string{
 		10: "-3.5449077018",
 		60: "-3.544907701811032054596334966682290365595098912244774256427616",
+	}},
+	{Name: "digamma(7/2)", Build: func() Real { return Digamma(FromRat(7, 2)) }, Expected: map[int]string{
+		10: "1.1031566406",
+		60: "1.103156640645243187225690333667911099473507062006232559619539",
+	}},
+	{Name: "digamma(-1/2)", Build: func() Real { return Digamma(FromRat(-1, 2)) }, Expected: map[int]string{
+		10: "0.0364899740",
+		60: "0.036489973978576520559023667001244432806840395339565892952873",
+	}},
+	{Name: "polygamma(1, 7/2)", Build: func() Real { return Polygamma(1, FromRat(7, 2)) }, Expected: map[int]string{
+		10: "0.3303577561",
+		60: "0.330357756100234864972801055493631123212405259175950868762230",
+	}},
+	{Name: "polygamma(3, 7/2)", Build: func() Real { return Polygamma(3, FromRat(7, 2)) }, Expected: map[int]string{
+		10: "0.0703058488",
+		60: "0.070305848817252051255147503519926064542400487500236506282674",
+	}},
+	{Name: "polygamma(2, -1/2)", Build: func() Real { return Polygamma(2, FromRat(-1, 2)) }, Expected: map[int]string{
+		10: "-0.8287966442",
+		60: "-0.828796644234319995596334261160299870709808092766984345091802",
 	}},
 	{Name: "pow(2, 1/2)", Build: func() Real { return Pow(FromInt(2), FromRat(1, 2)) }, Expected: map[int]string{
 		10: "1.4142135624",

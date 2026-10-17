@@ -1,6 +1,7 @@
 package rational
 
 import (
+	"context"
 	"math/big"
 
 	"github.com/ripta/reals/pkg/constructive"
@@ -111,6 +112,89 @@ func (r *Number) Inverse() *Number {
 	return &Number{
 		r: new(big.Rat).Inv(r.r),
 	}
+}
+
+// Pow returns r raised to the integer power e. A negative e returns the reciprocal of the power,
+// and a zero base with a negative e returns constructive.ErrNonPositive. The power of zero to zero
+// is one.
+//
+// The numerator and denominator of a normalized fraction are coprime, so their powers are coprime
+// too and the result is built without normalizing it again.
+//
+// The precision limit carried by ctx bounds the size of the result. When the estimated result, e
+// times the larger bit length of the numerator and the denominator, exceeds the limit, Pow returns
+// constructive.ErrPrecisionOverflow before computing anything. A context with no limit places no
+// bound on the size. The bases zero, one, and negative one are exact for any e and are never
+// bounded. Pow checks ctx before and between squaring steps and returns its error as it is.
+func (r *Number) Pow(ctx context.Context, e *big.Int) (*Number, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	exp := new(big.Int).Abs(e)
+	invert := e.Sign() < 0
+	if r.IsZero() {
+		switch {
+		case e.Sign() == 0:
+			return One(), nil
+		case invert:
+			return nil, constructive.ErrNonPositive
+		default:
+			return Zero(), nil
+		}
+	}
+
+	num, den := new(big.Int).Abs(r.r.Num()), r.r.Denom()
+	negative := r.r.Sign() < 0 && exp.Bit(0) == 1
+	if num.BitLen() == 1 && den.BitLen() == 1 {
+		if negative {
+			return New64(-1, 1), nil
+		}
+		return One(), nil
+	}
+
+	if limit, ok := constructive.PrecisionLimit(ctx); ok && limit >= 0 {
+		bits := max(num.BitLen(), den.BitLen())
+		estimate := new(big.Int).Mul(exp, big.NewInt(int64(bits)))
+		if estimate.Cmp(big.NewInt(int64(limit))) > 0 {
+			return nil, constructive.ErrPrecisionOverflow
+		}
+	}
+
+	powNum, powDen := big.NewInt(1), big.NewInt(1)
+	base, baseDen := new(big.Int).Set(num), new(big.Int).Set(den)
+	for i, n := 0, exp.BitLen(); i < n; i++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if exp.Bit(i) == 1 {
+			powNum.Mul(powNum, base)
+			powDen.Mul(powDen, baseDen)
+		}
+		if i < n-1 {
+			base.Mul(base, base)
+			baseDen.Mul(baseDen, baseDen)
+		}
+	}
+
+	if invert {
+		powNum, powDen = powDen, powNum
+	}
+	if negative {
+		powNum.Neg(powNum)
+	}
+
+	// SetInt64 initializes the denominator, so Denom returns a reference to it rather than a copy.
+	out := new(big.Rat).SetInt64(1)
+	out.Num().Set(powNum)
+	out.Denom().Set(powDen)
+	return &Number{r: out}, nil
+}
+
+// Num returns a copy of the numerator of the rational number in lowest terms.
+// For an integer, it is the value itself.
+func (r *Number) Num() *big.Int {
+	return new(big.Int).Set(r.r.Num())
 }
 
 // Sign returns the sign of the rational number: -1 for negative, 0 for zero,

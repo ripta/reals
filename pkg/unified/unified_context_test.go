@@ -141,11 +141,30 @@ var crossLayerSentinelTests = []crossLayerSentinelTest{
 		wantErr: ErrNonPositive,
 		altErr:  constructive.ErrNonPositive,
 	},
+	{
+		name: "unified Polygamma of a negative order",
+		run: func() error {
+			_, err := One().Polygamma(-1)
+			return err
+		},
+		wantErr: ErrNegativeOrder,
+		altErr:  constructive.ErrNegativeOrder,
+	},
+	{
+		name: "constructive Polygamma of a negative order, approximated through FormattedString",
+		run: func() error {
+			_, err := irr(constructive.Polygamma(-1, constructive.Two())).FormattedString(testCtx, 10, 10)
+			return err
+		},
+		wantErr: ErrNegativeOrder,
+		altErr:  constructive.ErrNegativeOrder,
+	},
 }
 
 func TestDomainSentinelsAreSharedAcrossLayers(t *testing.T) {
 	assert.Same(t, constructive.ErrNegative, ErrNegative)
 	assert.Same(t, constructive.ErrNonPositive, ErrNonPositive)
+	assert.Same(t, constructive.ErrNegativeOrder, ErrNegativeOrder)
 
 	for _, test := range crossLayerSentinelTests {
 		t.Run(test.name, func(t *testing.T) {
